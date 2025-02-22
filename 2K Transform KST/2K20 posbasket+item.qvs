@@ -1,0 +1,165 @@
+// [~DontLoadReceipts]:  // no longer needed, since the filtering on REF_Type takes only sales receipts into account
+// LOAD * INLINE [DontLoadReceipts
+// RCP-1430901-2021-00006930
+// ];
+
+SET vIgnoreStations = 1416848, 1415928, 1410608, 1420568, 1470761;
+
+deleteBaskets:
+LOAD SubField(basketId,'|',-1) AS deleteBasketId
+FROM 
+    [lib://StaticContent (stiglechner_qlikdev)/Extensions/mappings/del-basket.css]
+    (txt, utf8, embedded labels, delimiter is ',', msq)
+WHERE
+	basketId LIKE 'KST|*';
+
+// Create empty tables posbasket and item
+posbasket: LOAD * INLINE [%basketId];
+item: LOAD * INLINE [%productId];
+
+FOR EACH vYear IN $(vYears) 
+
+	FOR EACH vPosbasketQvd IN '$(vQVDLoadFolder)/posbasket_$(vYear)_*.qvd'
+    
+   		LET vItemQvd = Replace(vPosbasketQvd, '/posbasket', '/item');
+        IF Alt(FileTime(vItemQvd) ,0) THEN
+        
+        	CONCATENATE ([posbasket])
+            LOAD 
+               // Link fields
+                 'KST|' & posbasket._StationIdentity & '|' & posbasket.rowGuid AS %basketId
+                ,'KST|' & posbasket._StationIdentity  AS %locationId
+                ,Floor(posbasket.posted_date)         AS %calLink
+                ,Hour(posbasket.posted_date)          AS posbasket.stunde
+                ,'KST'                                AS Source
+
+        //         ,posbasket.rowGuid
+        //         ,posbasket.ID
+                 ,posbasket.REF_Type
+                 ,if(Match(posbasket.REF_Type, 310, 320) OR Match(ApplyMap('Mapping_IsNotSold', posbasket.rowGuid), 'is_EVMA', 'is_EVGF'), 1, 0) AS is_EV
+                 ,if(Match(posbasket.REF_Type, 310, 320) OR       ApplyMap('Mapping_IsNotSold', posbasket.rowGuid) ='is_EVMA'            , 1, 0) AS is_EVMA
+                 ,if(Match(posbasket.REF_Type, 320, 320) OR       ApplyMap('Mapping_IsNotSold', posbasket.rowGuid) ='is_EVGF'            , 1, 0) AS is_EVGF
+                 ,if(Match(posbasket.REF_Type, 330)      OR       ApplyMap('Mapping_IsNotSold', posbasket.rowGuid) ='is_VERD'            , 1, 0) AS is_VERD
+                 ,if(Match(posbasket.REF_Type, 340)      OR       ApplyMap('Mapping_IsNotSold', posbasket.rowGuid) ='is_WERB'            , 1, 0) AS is_WERB
+                 ,if(Match(posbasket.REF_Type, 350)      OR       ApplyMap('Mapping_IsNotSold', posbasket.rowGuid) ='is_DIEB'            , 1, 0) AS is_DIEB
+                 
+        //         ,posbasket.creation_date
+//                    ,posbasket.posted_date
+                   ,Timestamp(Floor(posbasket.posted_date, 1/24/3600), 'YYYY-MM-DD hh:mm:ss') AS 	posbasket.posted_date  // auf Sekunde genau
+        //         ,posbasket.IsCanceled
+        //         ,posbasket.IsCancelation
+        //         ,posbasket.IDCancel
+                ,posbasket.IsLoyalty
+        //         ,posbasket.IDLoyalty
+        //         ,posbasket.Assign
+        //         ,posbasket.REF_Card
+        //         ,posbasket.CardID
+        //         ,posbasket.Card1
+                ,posbasket.HasDscnt
+                ,posbasket.DscntID
+        //         ,posbasket.DscntIDadd
+                ,posbasket.DscntText
+                ,posbasket.Dscnt
+        //         ,posbasket.PrintAs
+        //         ,posbasket.PrintAdditional
+            FROM
+                [$(vPosbasketQvd)] (qvd)
+            WHERE
+                WildMatch(posbasket.REF_Type, '100', '3??')
+                AND NOT Match(posbasket._StationIdentity, $(vIgnoreStations))
+                AND NOT Exists(deleteBasketId, posbasket.rowGuid);
+
+              
+            CONCATENATE (item)
+            LOAD
+            	 'KST|' & posbasket._StationIdentity & '|' & posbasket.rowGuid AS %basketId
+                ,'KST|' & posbasket._StationIdentity & '|' & item.REF_Product AS %productId
+        //        ,item.rowGuid                    AS %kstReceipt
+        //        ,'KST|' & item.rowGuid           AS item.uid     
+        //         ,item.rowGuid
+                ,-RowNo() AS item.uniqueAutoId
+                ,item.itemid
+        //         ,item.Mark
+        //         ,item.TextFull
+                ,item.quantity
+        //         ,item.REF_Product
+        //         ,item.Tax
+                ,item.price_net
+                ,item.price_gross
+                ,item.amount_net
+                ,item.amount_gross
+                ,item.PrcListNet
+                ,item.PrcListGross
+                ,item.PrcUnitProcNet
+        //         ,item.PrcUnitAssessNet
+        //         ,item.MarginProcNet
+        //         ,item.MarginAssessNet
+        //         ,item.IsDscnt
+                ,item.PrcUnitListNet
+                ,item.PrcUnitListGross
+            FROM
+                [$(vItemQvd)] (qvd);
+//             WHERE 
+//             	Exists(%basketId, 'KST|' & posbasket._StationIdentity & '|' & posbasket.rowGuid);
+//               // inner join in the following step will eliminate all items without posbasket entry ...
+                       
+        ELSE
+           TRACE `The posbasket file "$(vPosbasketQvd)" has no matching item file "$(vItemQvd)"`;
+           TRACE skipping both ...;
+        END IF
+   NEXT vPosbasketQvd   
+
+NEXT vYear
+
+DROP TABLE deleteBaskets;
+
+TRACE joining all items into posbasket ...;
+
+STORE item INTO [$(vQVDSaveToFolder)/~tmp-allitems.qvd] (qvd);
+DROP TABLE item;
+LET vRowsBefore = NoOfRows('posbasket');
+
+INNER JOIN (posbasket)
+LOAD * FROM [$(vQVDSaveToFolder)/~tmp-allitems.qvd] (qvd);
+LET vRowsAfter = NoOfRows('posbasket');
+RENAME TABLE posbasket TO posbasket_item;
+
+// faster way to generate list of distinct %productId is via the Symboltable
+
+usedProducts:    
+LOAD
+    FieldValue('%productId',RecNo()) AS %productId
+    ,1 AS usedProduct
+AUTOGENERATE 
+    FieldValueCount('%productId');
+
+STORE usedProducts INTO [$(vQVDSaveToFolder)/usedProducts.qvd] (qvd);
+CALL GetQvdFieldNames('usedProducts', vQVDSaveToFolder);
+
+
+usedProducts2:
+LOAD
+	%productId
+    ,Min(posbasket.posted_date) AS postedDate_Min
+    ,Max(posbasket.posted_date) AS postedDate_Max
+    ,Sum(if(Year(posbasket.posted_date)=2020, item.price_net)) AS Sum_2020
+    ,Sum(if(Year(posbasket.posted_date)=2021, item.price_net)) AS Sum_2021
+    ,Sum(if(Year(posbasket.posted_date)=2022, item.price_net)) AS Sum_2022
+    ,Sum(if(Year(posbasket.posted_date)=2023, item.price_net)) AS Sum_2023
+    ,Sum(if(Year(posbasket.posted_date)=2024, item.price_net)) AS Sum_2024
+    ,Sum(if(Year(posbasket.posted_date)=2025, item.price_net)) AS Sum_2025
+    ,Sum(if(Year(posbasket.posted_date)=2026, item.price_net)) AS Sum_2026
+    ,Sum(if(Year(posbasket.posted_date)=2027, item.price_net)) AS Sum_2027
+    ,Sum(if(Year(posbasket.posted_date)=2028, item.price_net)) AS Sum_2028
+    ,Sum(if(Year(posbasket.posted_date)=2029, item.price_net)) AS Sum_2029
+    ,Sum(if(Year(posbasket.posted_date)=2030, item.price_net)) AS Sum_2030
+RESIDENT
+	posbasket_item
+GROUP BY
+    %productId;
+    
+    
+STORE usedProducts2 INTO [$(vQVDSaveToFolder)/usedProducts2.qvd] (qvd);
+CALL GetQvdFieldNames('usedProducts2', vQVDSaveToFolder);
+
+

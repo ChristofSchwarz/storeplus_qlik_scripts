@@ -1,0 +1,25 @@
+location:
+LOAD 
+	* 
+FROM 
+	[$(vQVDLoadFolder2)/location.qvd] (qvd)
+WHERE
+	Exists(%locationId);
+
+product:
+LOAD 
+	* 
+FROM 
+	[$(vQVDLoadFolder)/product.qvd] (qvd)
+WHERE
+	Exists(%productId);
+
+
+productgroup:
+LOAD 
+	* 
+FROM 
+	[$(vQVDLoadFolder2)/productgroup.qvd] (qvd)
+WHERE
+	Exists(%prodGrpId);
+

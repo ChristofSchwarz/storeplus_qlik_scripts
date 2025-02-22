@@ -1,0 +1,203 @@
+LIB CONNECT TO 'QRS-API GET';
+
+RestConnectorMasterTable:
+SQL SELECT 
+	"id",
+// 	"createdDate" AS "createdDate_u1",
+// 	"modifiedDate" AS "modifiedDate_u1",
+// 	"modifiedByUserName" AS "modifiedByUserName_u1",
+	"userId",
+	"userDirectory",
+	"userDirectoryConnectorName",
+	"name",
+	"inactive",
+	"removedExternally",
+	"blacklisted",
+	"deleteProhibited",
+// 	"privileges" AS "privileges_u0",
+// 	"schemaPath" AS "schemaPath_u1",
+	"__KEY_root",
+	(SELECT 
+// 		"id" AS "id_u0",
+// 		"createdDate",
+// 		"modifiedDate",
+// 		"modifiedByUserName",
+		"value" AS "customProperty.value",
+// 		"schemaPath",
+		"__KEY_customProperties",
+		"__FK_customProperties",
+		(SELECT 
+// 			"id",
+			"name" AS "customProperty.name",
+// 			"valueType",
+// 			"privileges",
+			"__KEY_definition",
+			"__FK_definition"
+		FROM "definition" PK "__KEY_definition" FK "__FK_definition")    
+	FROM "customProperties" PK "__KEY_customProperties" FK "__FK_customProperties"),
+	(SELECT 
+		"@Value" AS "role",
+		"__FK_roles"
+	FROM "roles" FK "__FK_roles" ArrayValueAlias "role"),
+	(SELECT 
+// 		"id" AS "id_u1",
+// 		"createdDate" AS "createdDate_u0",
+// 		"modifiedDate" AS "modifiedDate_u0",
+// 		"modifiedByUserName" AS "modifiedByUserName_u0",
+		"attributeType",
+		"attributeValue",
+// 		"externalId",
+// 		"schemaPath" AS "schemaPath_u0",
+		"__FK_attributes"
+	FROM "attributes" FK "__FK_attributes"),
+	(SELECT 
+		"@Value" AS "tag",
+		"__FK_tags"
+	FROM "tags" FK "__FK_tags" ArrayValueAlias "tag")
+FROM JSON (wrap on) "root" PK "__KEY_root"
+WITH CONNECTION (
+	URL "$(vQRS_URL_Users)?xrfkey=0123456789abcdef"
+    ,HTTPHEADER "$(vQRS_hdrkey)" "$(vQRS_user)"
+    ,HTTPHEADER "X-Qlik-XrfKey" "0123456789abcdef"
+);
+
+
+[tQMCusers]:
+LOAD	
+// 	[userId]
+// 	,[userDirectory]
+    'UserDirectory=' & userDirectory & '; UserId=' & userId  AS QMC.OSUSER
+    ,Upper(userDirectory & '\' & userId)                     AS QMC.QLIK_USER
+	,[name]                                                  AS QMC.UserName
+	,[__KEY_root]
+RESIDENT 
+	RestConnectorMasterTable
+WHERE 
+	NOT IsNull([__KEY_root])
+    AND NOT blacklisted LIKE 'True'
+    AND NOT inactive LIKE 'True';
+
+
+
+tCustomProperties:
+// LEFT JOIN (tQMCusers)
+LOAD 
+// JOIN ON
+	[__FK_customProperties] AS [__KEY_root]
+// ADD FIELD
+// 	,CONCAT([customProperty], ';') AS customProperties
+	,customProperty.value
+    ,[__KEY_customProperties]
+RESIDENT 
+	RestConnectorMasterTable
+WHERE 
+	NOT IsNull([__FK_customProperties])
+// GROUP BY
+// 	[__FK_customProperties];
+;
+
+LEFT JOIN (tCustomProperties)
+LOAD	
+// JOIN ON
+	[__FK_definition] AS [__KEY_customProperties]	
+// ADD FIELD
+	,[customProperty.name]
+RESIDENT 
+	RestConnectorMasterTable
+WHERE 
+	NOT IsNull([__FK_definition]);
+
+FOR EACH vCustomProperty IN 'SalesDashboardSheets', 'SalesDashboardAccessLevel' // ,'SalesDashboardStationen'
+
+    // Custom Properties werden eingejoined und, falls mehrere werte pro property
+    // verdoppelt auch ggf. Zeilen in tQMCusers tabelle
+
+    LEFT JOIN (tQMCusers)
+    LOAD
+        // Join on
+        __KEY_root
+        //
+        // ,Concat(customProperty.value, ';') AS $(vCustomProperty)
+        ,customProperty.value AS QMC.$(vCustomProperty)
+    RESIDENT
+        tCustomProperties
+    WHERE
+        [customProperty.name] = '$(vCustomProperty)'
+    // GROUP BY
+    //     __KEY_root
+    ;
+NEXT vCustomProperty
+    
+DROP TABLE tCustomProperties;
+
+
+LEFT JOIN (tQMCusers)
+LOAD	
+// JOIN ON
+	[__FK_attributes] AS [__KEY_root]
+// ADD FIELDS
+	,Lower([attributeValue]) AS QMC.Email
+RESIDENT
+	RestConnectorMasterTable
+WHERE 
+	NOT IsNull([__FK_attributes])
+    AND attributeType LIKE 'Email'
+;
+
+// Add (Admin)roles as semicolon-separated list
+LEFT JOIN (tQMCusers)
+LOAD	
+	// Join on 
+	[__FK_roles] AS [__KEY_root]
+    // Add field
+	,Concat(role, ';') AS QMC.AdminRoles
+RESIDENT 
+	RestConnectorMasterTable
+WHERE 
+	NOT IsNull([__FK_roles])
+GROUP BY
+	[__FK_roles];
+
+
+DROP TABLE RestConnectorMasterTable;
+DROP FIELDS [__KEY_root];
+
+/*
+Lookup_QlikUser_By_Email:
+MAPPING LOAD DISTINCT
+	QMC.Email
+    ,QMC.QLIK_USER
+RESIDENT
+	tQMCusers
+WHERE
+	Len(QMC.Email);
+
+
+Lookup_OSUser_By_Email:
+MAPPING LOAD DISTINCT
+	QMC.Email
+    ,QMC.OSUSER
+RESIDENT
+	tQMCusers
+WHERE
+	Len(QMC.Email);
+*/  
+
+Lookup_UserName_By_UserId:
+MAPPING LOAD DISTINCT
+	QMC.QLIK_USER
+    ,QMC.UserName
+RESIDENT
+	tQMCusers
+WHERE
+	Len(QMC.QLIK_USER) AND Len(QMC.UserName);
+
+
+Lookup_OSUser_By_UserId:
+MAPPING LOAD DISTINCT
+	QMC.QLIK_USER
+    ,QMC.OSUSER
+RESIDENT
+	tQMCusers
+WHERE
+	Len(QMC.QLIK_USER) AND Len(QMC.OSUSER);

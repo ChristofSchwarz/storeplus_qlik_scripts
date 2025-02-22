@@ -1,0 +1,8 @@
+
+LEFT JOIN (Reload)
+LOAD Now() AS ScriptEnd AUTOGENERATE(1);
+
+LET vAllScripts = '';
+
+EXIT SCRIPT;
+

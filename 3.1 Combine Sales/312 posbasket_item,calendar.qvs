@@ -1,0 +1,138 @@
+// 2022-01-21 ... we only need REF_Type 100 from KST / Monalisa anyways doesn't know this field and it 
+// was introduced and filled with just 100 to match to KST posbasket structure.
+
+CALL GetQvdFieldNames('posbasket+item', vQvdPath_Transf_KST);
+CALL GetQvdFieldNames('posbasket+item', vQvdPath_Transf_Monalisa);
+
+posbasket_filter:
+LOAD * INLINE [
+    REF_Type
+    100
+];
+
+
+posbasket_item: 
+LOAD 
+    %basketId	
+    ,%calLink	
+    ,%locationId	
+    ,%productId	
+//     ,posbasket.Dscnt	
+//     ,posbasket.DscntID	
+//     ,posbasket.DscntText	
+//     ,posbasket.HasDscnt	
+//     ,posbasket.IsLoyalty	
+    ,posbasket.posted_date 
+    ,posbasket.stunde
+    ,posbasket.REF_Type
+    ,productprice.uids	
+//     ,productprice.validfrom	
+//     ,productprice.validto	
+    ,is_EV
+    ,is_EVMA
+    ,is_EVGF
+    ,is_VERD
+    ,is_DIEB
+    ,is_WERB
+    ,is_Realverkauf  // neu 17.08.2022
+    ,Source	    
+    ,item.amount_gross	
+    ,item.amount_net	
+    ,item.cost_price // Einkaufspreis bei Monalisa
+    ,item.uniqueAutoId
+    ,item.itemid	
+    ,item.line_margin_net	
+    ,item.PrcListGross	
+    ,item.PrcListNet	
+    ,item.PrcUnitListGross	
+    ,item.PrcUnitListNet	
+    ,item.PrcUnitProcNet	
+    ,item.price_gross	
+    ,item.price_net	
+    ,item.quantity	
+FROM 
+    [$(vQvdPath_Transf_KST)/posbasket+item.qvd] (qvd)
+WHERE
+	Exists(REF_Type, posbasket.REF_Type)
+;
+
+DROP TABLE posbasket_filter;
+
+//AND    NOT Match(%locationId, 'KST|1416848', 'KST|1415928', 'KST|1410608', 'KST|1420568');  // ignore locations which are not in storeplus network
+;
+ 
+CONCATENATE
+LOAD
+   %basketId	
+    ,%calLink	
+    ,%locationId	
+    ,%productId	
+    ,%monalisaProductId	
+    ,posbasket.posted_date
+    ,posbasket.REF_Type
+    ,posbasket.stunde
+    ,Coalesce(is_EV, 0) AS is_EV
+    ,Coalesce(is_EVMA, 0) AS is_EVMA  // neu 17.08.2022
+    ,Coalesce(is_EVGF, 0) AS is_EVGF  // neu 17.08.2022
+    ,Coalesce(is_VERD, 0) AS is_VERD
+    ,Coalesce(is_DIEB, 0) AS is_DIEB
+    ,Coalesce(is_WERB, 0) AS is_WERB
+    ,is_Realverkauf  // neu 17.08.2022
+    ,posbasket.type	
+//     ,posbasket.uid	
+//     ,productprice.product	
+//     ,productprice.uids	
+//     ,productprice.validfrom	
+//     ,productprice.validto	
+    ,Source	
+//     ,item.additional_text	
+    ,item.amount_gross	
+    ,item.amount_gross_without_discount	
+    ,item.amount_net	
+    ,item.amount_net_without_discount	
+//     ,item.cashier	
+    ,item.cost_price	
+//     ,item.currency	
+//     ,item.isFuel	
+    ,item.uniqueAutoId
+    ,item.itemid	
+    ,item.melzer_product_group
+    ,item.line_margin_net	
+//     ,item.parent_posbasket_item_uid	
+//     ,item.parentitemid	
+//     ,item.pos_id	
+    ,item.price_gross	
+    ,item.price_net	
+//     ,item.pricing_rule	
+//     ,item.product_id	
+//     ,item.product_name	
+//     ,item.product_type	
+    ,item.quantity	
+//     ,item.uid	
+FROM 
+	[$(vQvdPath_Transf_Monalisa)/posbasket+item.qvd] (qvd);
+
+
+STORE posbasket_item INTO [$(vQvdPath_Store)/posbasket+item.qvd] (qvd);
+CALL GetQvdFieldNames('posbasket+item', vQvdPath_Store);
+
+// faster way to generate calendar on Symboltable of field '%calLink'
+SET vCalLink = FieldValue('%calLink',RecNo());
+
+calendar:    
+LOAD
+    $(vCalLink) AS %calLink
+    ,Date($(vCalLink)) AS Date
+    ,Year($(vCalLink)) AS Jahr
+    ,Dual(Date($(vCalLink),'YYYY-MM'), MonthStart($(vCalLink))) AS JahrMonat
+    ,Dual(Year($(vCalLink)) & '/W' & Num(Week($(vCalLink)),'00'), WeekStart($(vCalLink))) AS JahrWoche
+AUTOGENERATE FieldValueCount('%calLink');
+LET vCalLink = Null();
+
+STORE calendar INTO [$(vQvdPath_Store)/calendar.qvd] (qvd);
+CALL GetQvdFieldNames('calendar', vQvdPath_Store);
+
+DROP TABLE posbasket_item;
+
+
+

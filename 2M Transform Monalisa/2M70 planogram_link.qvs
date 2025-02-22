@@ -1,0 +1,49 @@
+[planogram id->name]:
+MAPPING LOAD
+    uid,
+    name
+FROM 
+	[$(vQVDLoadFolder)/proposal.qvd] (qvd);
+
+
+planogram_link:
+LOAD 
+    uid      AS proposal_product.uid
+    ,product AS %monalisaProductId
+    ,proposal AS %proposalId
+    ,on_sale  AS proposal_product.on_sale        
+    ,Timestamp(Coalesce(valid_from, '1900-01-01 00:00:00.000000'), 'YYYY-MM-DD hh:mm:ss.fff') AS proposal_product.valid_from
+    ,Timestamp(Coalesce(valid_to, '2199-01-01 00:00:00.000000'), 'YYYY-MM-DD hh:mm:ss.fff') AS proposal_product.valid_to
+    ,ApplyMap('planogram id->name', proposal, '? ' & proposal & ' ?') AS proposal_product.planogram
+//     ,creation_date
+//     ,creation_user
+//     ,modification_date
+//     ,modification_user
+//     ,valid
+//     ,s2g_version
+FROM 
+	[$(vQVDLoadFolder)/proposal_product.qvd] (qvd)
+WHERE
+	valid = 'True';
+     
+
+interval:
+OUTER JOIN (planogram_link)
+IntervalMatch ( posbasket.posted_date, %monalisaProductId )
+LOAD 
+	proposal_product.valid_from, 
+    proposal_product.valid_to, 
+    %monalisaProductId
+RESIDENT
+	[planogram_link];
+
+// LEFT JOIN (planogram_link)
+// LOAD 
+// 	%productId AS [%monalisaProductId],
+//     product.name AS [proposal_product.productname]
+// RESIDENT
+// 	product;
+    
+STORE planogram_link INTO [$(vQVDSaveToFolder)/planogram_link.qvd] (qvd);
+CALL GetQvdFieldNames('planogram_link', vQVDSaveToFolder);
+

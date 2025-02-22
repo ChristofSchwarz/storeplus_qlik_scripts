@@ -1,0 +1,13 @@
+mandator:
+LOAD
+    uid            AS mandator.uid
+    ,'ML|' & uid   AS %mandator
+    ,description   AS mandator.description
+    ,name          AS mandator.name
+FROM 
+	[$(vQVDLoadFolder)/mandator.qvd] (qvd)
+WHERE 
+	valid = 'True' AND name = 'Stiglechner';
+
+STORE mandator INTO [$(vQVDSaveToFolder)/mandator.qvd] (qvd);
+CALL GetQvdFieldNames('mandator', vQVDSaveToFolder);

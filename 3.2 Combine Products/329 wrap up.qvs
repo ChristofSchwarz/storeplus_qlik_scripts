@@ -1,0 +1,23 @@
+GuidedTour:
+LOAD * INLINE [
+	tourid, objid, helptext
+	1, JMyjPC, Hier ist ein Objekt 
+];
+
+LEFT JOIN (reload) 
+LOAD Now() AS FinishReloadAt AUTOGENERATE(1);
+
+
+// Füge eine Farbe zu produkten hinzu, die in der "prod-name-valid" Liste genannt werden
+LEFT JOIN (product)
+LOAD
+	[prod-name-valid.prod-name] AS product.name,
+    Green(32) AS valid.color,
+    CHR(9432) & CHR(10) 
+        & [prod-name-valid.user] & ', ' 
+        & TimeStamp([prod-name-valid.timestamp], 'DD.MM.YYYY hh:mm')  AS valid.info
+RESIDENT
+	[prod-name-valid];
+
+
+EXIT SCRIPT;

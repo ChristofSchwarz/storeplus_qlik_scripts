@@ -1,0 +1,151 @@
+/*
+change log:
+06.06.2002 Christof Schwarz: added "product_brand" field, left-joined into products from table product_brand.qvd
+*/
+
+
+// LIB CONNECT TO 'HTTP GET Request (stiglechner_schwarz.ext)';
+LIB CONNECT TO 'QRS-API GET';
+
+ProdName_Replace:
+MAPPING
+LOAD @Value AS Search, '' AS Replace;
+SQL SELECT 
+	"__KEY_root",
+	(SELECT 
+		"@Value",
+		"__FK_wortfragmente"
+	FROM "wortfragmente" FK "__FK_wortfragmente" ArrayValueAlias "@Value")
+FROM JSON (wrap on) "root" PK "__KEY_root"
+WITH CONNECTION (
+	URL "https://localhost/headervp/extensions/settings/FixProductName.json",
+    HTTPHEADER "runas" "qlik.script"
+);
+
+product:
+LOAD
+   'ML|' & uid                   AS %productId
+//   ,uid                          AS %monalisaProductId
+   ,'ML|' & uid                  AS %prodMappingId  // in Monalisa the %prodMappingId and %productId are the same, in KST not
+   ,'ML|' & productgroup         AS %prodGrpId   
+   ,'ML'                         AS product.source
+   ,product_brand                AS %product_brand_uid
+//    ,ApplyMap('map_external_order_number', 'ML|' & uid, Null()) 
+//                                  AS product.all_extern_orderNs
+   ,uid                          AS product.uid
+   ,base_rate_factor             AS product.base_rate_factor
+//    ,base_rate_unit               AS product.base_rate_unit
+//    ,commission_code              AS product.commission_code
+//    ,description                  AS product.description
+//    ,description_short            AS product.description_short
+//    ,discount_allowed             AS product.discount_allowed
+//    ,euro_code                    AS product.euro_code
+//    ,fin_group                    AS product.fin_group
+//    ,information_bon              AS product.information_bon
+//    ,information_display_operator AS product.information_display_operator
+//    ,is_internal_product          AS product.is_internal_product
+//    ,is_locked                    AS product.is_locked
+//    ,is_saleable                  AS product.is_saleable
+//    ,is_stockable                 AS product.is_stockable
+//    ,kt4code                      AS product.kt4code
+   ,mesurement_unit              AS product.mesurement_unit
+   ,Trim(MapSubString('ProdName_Replace', Upper(
+        name)))                  AS product.name
+//    ,vat_group                    AS product.vat_group
+//    ,productgroup                 AS product.productgroup
+//    ,delivery_date                AS product.delivery_date
+//    ,product_delivery             AS product.product_delivery
+//    ,product_status               AS product.product_status
+//    ,stock_evaluation             AS product.stock_evaluation
+//    ,financial_accounting_group   AS product.financial_accounting_group
+//    ,financial_tax_group          AS product.financial_tax_group
+//    ,display_order_number         AS product.display_order_number
+//    ,purchase_price               AS product.purchase_price
+//    ,sales_price                  AS product.sales_price
+//     ,product_type               AS product.product_type
+//    ,maturity_discount            AS product.maturity_discount
+//    ,iscounted                    AS product.iscounted
+//    ,price_fixed                  AS product.price_fixed
+//    ,fixed_price                  AS product.fixed_price
+//    ,sales_control                AS product.sales_control
+//    ,carwash                      AS product.carwash
+//    ,dispensable                  AS product.dispensable
+   ,Fabs(is_fuel LIKE 'True')       AS product.isFuel
+//   ,ApplyMap('IsFuel_Mapping', 'ML|' & uid, Null()) AS product.isFuel   
+//    ,prepaidcard                  AS product.prepaidcard
+//    ,returnable                   AS product.returnable
+//    ,prepaid_activation_type      AS product.prepaid_activation_type
+//    ,youth_protection_class       AS product.youth_protection_class
+//    ,decimalquantityallowed       AS product.decimalquantityallowed
+//    ,label_type                   AS product.label_type
+
+FROM 
+	[$(vQVDLoadFolder)/product.qvd] (qvd)
+// WHERE 
+// 	valid = 'True'
+;
+
+
+
+// Add "Manufacturer" to the product table
+LEFT JOIN (product)
+LOAD 
+    // JOIN ON
+	[%productId]
+    // versuche auch aus dem (bei mehreren manufacturern) zusammengesetzen string ggf. eine Ausbesserung
+    // aus dem mapping manufacturer_names.css zu erhalten
+    ,ApplyMap('fix_productpartner', product.manufacturer, product.manufacturer) AS product.manufacturer 
+;
+LOAD
+    [%productId]
+    ,Concat(DISTINCT productpartner.name, ';') AS product.manufacturer 
+RESIDENT
+	productpartner
+WHERE
+	productpartner.product_partner_type = 'Manufacturer'
+GROUP BY 
+	%productId;
+
+
+// Lookup for the partner's external_order_number(s) (material number of supplier e.g. Lekkerland)
+LEFT JOIN (product)
+LOAD
+    // JOIN ON
+	 %productId as %productId
+    // Add field
+    ,Concat(DISTINCT productpartner.name & ': ' & productpartner.external_order_number, CHR(10))
+         AS product.all_extern_orderNs
+RESIDENT
+	productpartner
+WHERE
+	Len(productpartner.external_order_number) AND NOT productpartner.external_order_number = 0
+GROUP BY
+    %productId;
+   
+// wait with storing until producgtgtin
+// STORE product INTO [$(vQVDSaveToFolder)/product.qvd] (qvd);
+
+LET vRowsBefore = NoOfRows('product');
+
+LEFT JOIN (product)
+LOAD
+    uid AS %product_brand_uid,
+//     creation_date,
+//     creation_user,
+//     modification_date,
+//     modification_user,
+    name AS product_brand
+//     mandator,
+//     s2g_version,
+//     valid
+FROM 
+	[$(vQVDLoadFolder)/product_brand.qvd]
+	(qvd);
+
+LET vRowsAfter = NoOfRows('product');
+
+IF vRowsAfter > vRowsBefore THEN
+    [LEFT JOIN von Tabelle product_brand hat zu Verdoppelung von Zeilen in product geführt. Notstop. Zeilen vorher $(vRowsBefore) nachher $(vRowsAfter)];
+END IF
+
+// STORE von product als QVD ist in script 2M50

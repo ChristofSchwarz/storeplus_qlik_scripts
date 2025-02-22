@@ -1,0 +1,59 @@
+LET vFromQVD = '$(vQVDLoadFolder)/Def_ProductGroup.qvd';
+//CALL traceQvdRows(vFromQVD);
+
+// resolve the hierarchy
+
+productgroup:
+HIERARCHY (productgroup.ID_Group, productgroup.REF_GroupParent, productgroup.name, , 
+	productgroup.name, 'productgroup.Path', '\', 'productgroup.hier_level')
+LOAD
+ 	_StationIdentity & '|' & [ID_Group] AS productgroup.ID_Group,
+ 	_StationIdentity & '|' & [REF_GroupParent] AS productgroup.REF_GroupParent,
+    C_StrName AS productgroup.name
+//  	Trim(Replace(Replace(Replace(C_StrName
+//     	,'20%', '')
+//         ,'10%','')
+//         ,'0%', '')) AS productgroup.name
+FROM 
+	[$(vQVDLoadFolder)/Def_ProductGroup.qvd] (qvd)
+;
+DROP FIELD productgroup.REF_GroupParent FROM productgroup;
+
+LET vRowsBefore  = NoOfRows('productgroup');
+
+
+// only keep used product groups (therefore INNER JOIN) and 
+// we join more fields into the table
+
+INNER JOIN (productgroup) 
+LOAD
+	// JOIN ON
+	_StationIdentity & '|' & [ID_Group] AS productgroup.ID_Group
+	// Add fields
+	,'KST|' /*& _StationIdentity & '|'*/ 
+                            & ID_Group  AS %prodGrpId   
+    ,Replace(ID_Group,'_','-')          AS productgroup.kstProdGrpCode
+//     ,REF_TypeProduct                    AS productgroup.REF_TypeProduct
+//     ,ID_Group                           AS productgroup.ID_Group
+//     ,REF_GroupParent                    AS productgroup.REF_GroupParent
+//     ,C_StrName                          AS productgroup.Name
+//     ,C_IntCode                          AS productgroup.Code
+//     ,C_IntCodeSub                       AS productgroup.CodeSub
+//     ,REF_AccountCredit                  AS productgroup.REF_AccountCredit
+//     ,REF_AccountDebit                   AS productgroup.REF_AccountDebit
+//     ,C_BoolIsUsed                       AS productgroup.IsUsed
+//     ,C_BoolIsVirtual                    AS productgroup.IsVirtual
+//     ,C_StrFlag                          AS productgroup.Flag
+//     ,C_IntVersion                       AS productgroup.Version
+//     ,isProtected                        AS productgroup.isProtected
+//     ,isDischarged                       AS productgroup.isDischarged
+//     ,rowGuid                            AS productgroup.rowGuid
+//     ,rowVersion                         AS productgroup.rowVersion
+//     ,IQKT4Code                          AS productgroup.IQKT4Code
+FROM 
+	[$(vQVDLoadFolder)/Def_ProductGroup.qvd] (qvd)
+WHERE
+	Exists(%prodGrpId, 'KST|' /* & _StationIdentity & '|' */ & ID_Group)
+;
+STORE productgroup INTO [$(vQVDSaveToFolder)/productgroup.qvd] (qvd);
+CALL GetQvdFieldNames('productgroup', vQVDSaveToFolder);

@@ -1,0 +1,65 @@
+
+// Lade einige is_Spalten in eine 
+FOR EACH is_COLUMN in 'is_WERB', 'is_EV', 'is_EVMA', 'is_VERD', 'is_DIEB'
+
+    [t_$(is_COLUMN)]:
+    NOCONCATENATE LOAD
+        'Fabs(' & Concat([Qlik Condition], ') OR (') & ')' AS [Qlik Conditions]
+    FROM 
+        [$(vBerechtigungenExcel)] 
+        (ooxml, embedded labels, table is [Schnepf Rechn.arten], header is 1 lines)
+    WHERE
+        $(is_COLUMN)
+        AND MixMatch(Valid, 'Y', 'J', '1');    
+
+    LET [vCondition_$(is_COLUMN)] = Coalesce(Peek('Qlik Conditions', -1, 't_$(is_COLUMN)'), '0');
+
+    TRACE `$(is_COLUMN) Bedingung: $(vCondition_$(is_COLUMN))`;
+    DROP TABLE [t_$(is_COLUMN)];
+
+NEXT is_COLUMN
+LET is_COLUMN = Null();
+
+// Füge dynamisch definierte Mappings für diverse Nicht-Umsatz-Typen hinzu
+
+[melzer_invoice+item2]:
+NOCONCATENATE LOAD
+    *
+    ,$(vCondition_is_WERB) AS is_WERB_Schnepf
+    ,$(vCondition_is_EV)   AS is_EV_Schnepf
+    ,$(vCondition_is_EVMA) AS is_EVMA_Schnepf  // neu 07-Okt-2024
+    ,$(vCondition_is_VERD) AS is_VERD_Schnepf
+    ,$(vCondition_is_DIEB) AS is_DIEB_Schnepf
+RESIDENT
+    [schnepf_invoice+item];
+
+DROP TABLE [schnepf_invoice+item];
+RENAME TABLE [melzer_invoice+item2] TO [schnepf_invoice+item];
+
+STORE [schnepf_invoice+item] INTO [$(vQVDSaveToFolder)/schnepf_invoice+item.qvd] (qvd);
+CALL GetQvdFieldNames('schnepf_invoice+item', vQVDSaveToFolder);
+
+
+
+// schnepf_invoice_payment derzeit nicht verwendet (Stand Juni 2024)
+[schnepf_invoice_payment]:
+SELECT 
+	uid                          AS "payment.uid"
+	,creation_date               AS "payment.creation_date"
+// 	,creation_user               AS 
+	// ,modification_date           AS 
+// 	,modification_user           AS 
+	,valid                       AS "payment.valid"
+// 	,s2g_version                 AS 
+	,melzer_invoice_uid          AS "payment.invoice_uid"
+	,payment_type                AS "payment.payment_type"
+	,account_number              AS "payment.account_number"
+	,payment_amount              AS "payment.payment_amount"
+	,currency_code               AS "payment.currency_code"
+FROM 
+	"mona"."melzer_invoice_payment";
+
+
+STORE [schnepf_invoice_payment] INTO [$(vQVDSaveToFolder)/schnepf_invoice_payment.qvd] (qvd);
+CALL GetQvdFieldNames('schnepf_invoice_payment', vQVDSaveToFolder);
+

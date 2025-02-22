@@ -1,0 +1,20 @@
+discount_card:
+LOAD
+    uid                  AS discount_card.uid
+    ,basket_uid          AS discount_card.basket_uid
+    ,'ML|' & basket_uid  AS %basketId
+    ,type                AS discount_card.type
+    ,card_number         AS discount_card.card_number
+    ,track1              AS discount_card.track1
+    ,track2              AS discount_card.track2
+    ,track3              AS discount_card.track3
+    ,expiration_date     AS discount_card.expiration_date
+    ,iq_number           AS discount_card.iq_number
+FROM 
+	[$(vQVDLoadFolder)/discount_card.qvd] (qvd)
+WHERE
+	valid = 'True';
+
+
+STORE discount_card INTO [$(vQVDSaveToFolder)/discount_card.qvd] (qvd);
+CALL GetQvdFieldNames('discount_card', vQVDSaveToFolder);

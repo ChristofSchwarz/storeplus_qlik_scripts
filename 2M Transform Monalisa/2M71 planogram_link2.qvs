@@ -1,0 +1,67 @@
+[planogram id->name]:
+MAPPING LOAD
+    uid,
+    name
+FROM 
+	[$(vQVDLoadFolder)/proposal.qvd] (qvd);
+
+
+planogram_link2:
+LOAD 
+    uid      AS proposal_product.uid
+    ,product AS %monalisaProductId
+    ,proposal AS %proposalId
+    ,on_sale  AS proposal_product.on_sale        
+    ,Coalesce(Floor(valid_from), 2) AS proposal_product.valid_from
+    ,Coalesce(Floor(valid_to), 109574) AS proposal_product.valid_to
+    ,ApplyMap('planogram id->name', proposal, '? ' & proposal & ' ?') AS proposal_product.planogram
+//     ,creation_date
+//     ,creation_user
+//     ,modification_date
+//     ,modification_
+//     ,valid
+//     ,s2g_version
+FROM 
+	[$(vQVDLoadFolder)/proposal_product.qvd] (qvd)
+WHERE
+	valid = 'True';
+
+// Bringe die locations hinzu, für die die planogram gelten 
+// (das explodiert die planogram_link2 tabelle erwartungsgemäß)
+
+LEFT JOIN (planogram_link2)
+LOAD
+// JOIN ON
+    proposal AS %proposalId,
+// Add field 
+	'ML|' & location AS %locationId
+//     s2g_version
+FROM 
+	[$(vQVDLoadFolder)/location_proposal.qvd] (qvd)
+WHERE
+    valid like 'true'
+;
+
+
+
+interval:
+OUTER JOIN (planogram_link2)
+IntervalMatch ( %calLink, %monalisaProductId, %locationId )
+LOAD 
+	proposal_product.valid_from, 
+    proposal_product.valid_to, 
+    %monalisaProductId,
+    %locationId
+RESIDENT
+	[planogram_link2];
+
+// LEFT JOIN (planogram_link2)
+// LOAD 
+// 	%productId AS [%monalisaProductId],
+//     product.name AS [proposal_product.productname]
+// RESIDENT
+// 	product;
+    
+STORE planogram_link2 INTO [$(vQVDSaveToFolder)/planogram_link2.qvd] (qvd);
+CALL GetQvdFieldNames('planogram_link2', vQVDSaveToFolder);
+

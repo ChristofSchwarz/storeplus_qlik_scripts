@@ -1,0 +1,88 @@
+/*
+
+This script section gets shoppingcart items (details) + posbasket (header) from
+SQL segmented by year/months.
+
+It first checks how many records there are per year/month and only executes the SQL
+again if the no. of shopping carts in the QVD is different than in SQL (delta logic)
+
+Change: 17.01.2023 made loop per month, not per year, so save bandwidth
+
+*/
+
+LET vForceLoadAll = Weekday(Today()) = 'Sun'; // full-load on Sundays 
+// LET vForceLoadAll = 1;
+
+SET vWhere = p.valid;
+
+IF NOT vForceLoadAll THEN
+
+    TRACE Counting #shopping carts per year/month in SQL ...;
+
+    Counting_rows:
+ 	LOAD
+     	year & '-' & Num(month, '00') AS year_month
+       ,sql_count
+    ;
+    SELECT 
+        date_part('year', p.creation_date)  AS year 
+        ,date_part('month', p.creation_date) AS month 
+        ,Count(*)                            AS sql_count         
+    FROM 
+        "$(dbSchema)"."posbasket" AS p
+    WHERE
+         p.valid
+    GROUP BY
+        YEAR, MONTH
+    ;
+           
+END IF
+
+// get the respecive number of baskets in the QVDs
+
+QVD_Structure:
+LOAD * INLINE [
+	Prefix, FieldToCount
+    posbasket+item, posbasket.uid
+//    posbasket_payment+authorization, payment.posbasket_uid
+]
+WHERE NOT Prefix LIKE '//*';
+
+FOR v2 = 1 TO NoOfRows('QVD_Structure')
+    LET vPrefix = Peek('Prefix', v2 - 1, 'QVD_Structure');
+    LET vFieldToCount = Peek('FieldToCount', v2 - 1, 'QVD_Structure');
+
+    Counting_QVD_baskets:
+    LOAD * INLINE [year_month];
+
+	FOR v1 = 1 TO NoOfRows('Counting_rows')
+
+        // LET vSQLCount = Peek('sql_count', v1 - 1, 'Counting_rows');
+        LET vYearMonth = Peek('year_month', v1 - 1, 'Counting_rows');
+	    SET vQVDFile = [$(vQVDSaveToFolder)/$(vPrefix)_$(vYearMonth).qvd];
+
+        IF Alt(FileTime(vQVDFile), 0) THEN
+
+            [~Counting]:
+            LOAD [$(vFieldToCount)] FROM [$(vQVDFile)] (qvd);
+            LET vQVD_Count = FieldValueCount(vFieldToCount);
+            TRACE Counted $(vQVD_Count) baskets in $(vQVDFile);
+            DROP TABLE [~Counting];
+            CONCATENATE (Counting_QVD_baskets)
+            LOAD 
+                '$(vYearMonth)' AS year_month
+                ,$(vQVD_Count) AS [qvd_count_$(vPrefix)]
+            AUTOGENERATE(1);
+        ELSE
+	        TRACE No file $(vQVDFile);
+        END IF
+    NEXT v1
+    
+    LEFT JOIN (Counting_rows)
+    LOAD * RESIDENT Counting_QVD_baskets;
+    DROP TABLE Counting_QVD_baskets;
+    
+NEXT v2
+
+DROP TABLE QVD_Structure;
+

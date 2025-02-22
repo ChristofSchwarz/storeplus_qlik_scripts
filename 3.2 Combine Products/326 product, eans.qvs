@@ -1,0 +1,312 @@
+/*
+change log:
+06.06.2022 Christof Schwarz: added "product_brand" field from Monalisa product.qvd
+*/
+
+CALL GetQvdFieldNames('product', vQvdPath_Transf_KST);
+CALL GetQvdFieldNames('product', vQvdPath_Transf_Monalisa);
+
+// The highest mapping priority (*_1 ) is the one made using the Product ID. 
+// If there is a mapping hit, fill the fields product.name_1, product.prodGrpId_1, product.brand_1
+// and product.manufacturer_1 (and the respective *_info field)
+// This can be applied on Monalisa Products and KST Products in the first load into the temp ~product
+// table.
+
+SET vCommonFields = 
+//--- product name mappings 
+     SubField(ApplyMap('(N1)prodMappingId->productname', %prodMappingId, Null()),'$(i)',1)  AS product.name_1
+    ,SubField(ApplyMap('(N1)prodMappingId->productname', %prodMappingId, Null()),'$(i)',2)  AS product.name_1_info
+//--- product group mappings 
+    ,SubField(ApplyMap('(G1)prodMappingId->prodGrpId', %prodMappingId, Null()),'$(i)',1)    AS product.prodGrpId_1
+    ,SubField(ApplyMap('(G1)prodMappingId->prodGrpId', %prodMappingId, Null()),'$(i)',2)    AS product.prodGrpId_1_info    
+//--- brand mappings   
+    ,SubField(ApplyMap('(B1)prodMappingId->brand', %prodMappingId, Null()),'$(i)',1)        AS product.brand_1 
+    ,SubField(ApplyMap('(B1)prodMappingId->brand', %prodMappingId, Null()),'$(i)',2)        AS product.brand_1_info
+//--- manufacturer mappings         
+    ,SubField(ApplyMap('(M1)prodMappingId->manufacturer', %prodMappingId, Null()),'$(i)',1) AS product.manufacturer_1      
+    ,SubField(ApplyMap('(M1)prodMappingId->manufacturer', %prodMappingId, Null()),'$(i)',2) AS product.manufacturer_1_info 
+;
+
+
+// create combined table of KST product and Monalisa product qvds
+
+[~product]: 
+LOAD 
+    %productId
+    ,%prodMappingId
+    ,%prodGrpId                                                   AS product.prodGrpId_orig
+    ,product.source
+    ,product_brand
+//    ,product.uid
+//    ,product.base_rate_factor
+//    ,product.mesurement_unit
+    ,product.name                                                 AS product.name_orig
+    ,product.isFuel
+	,product.manufacturer                                         AS product.manufacturer_orig
+    ,product.all_extern_orderNs
+    ,product.all_eans
+    // ,product.melzer_product_id
+     ,ApplyMap('usedProducts_Monalisa', %productId, 0)            AS product.isUsed   
+    ,$(vCommonFields)  
+FROM
+	[$(vQvdPath_Transf_Monalisa)/product.qvd] (qvd);
+    
+    
+CONCATENATE ([~product]) 
+LOAD 
+
+    %productId
+    ,%prodMappingId
+    ,%prodGrpId                                                   AS product.prodGrpId_orig
+    ,product.source
+//     ,product.REF_TypeProduct
+//     ,product.REF_ProductGroup
+    ,product.isFuel
+//     ,product.PrimaryCode
+	,Null()                                                       AS product.manufacturer_orig
+    ,product.all_eans
+    ,product.all_extern_orderNs
+    ,product.name                                                 AS product.name_orig
+//     ,product.Catalog
+//     ,product.uid
+//     ,product.PrdCount
+    ,ApplyMap('usedProducts_KST', %productId, 0)                  AS product.isUsed
+    ,$(vCommonFields)  
+FROM 
+    [$(vQvdPath_Transf_KST)/product.qvd] (qvd);
+
+
+// Erzeuge ean Tabelle. Monalisa Produkte können mehrere EANs haben, daher mit Subfield
+// in mehrere Zeilen zersplitten am CHR(10) Zeichen. Füge Link Felder zu den Mapping Tabellen hinzu
+
+EANs:
+LOAD
+    *
+    ,ApplyMap('(N2)EAN->productname', ean, Null())      AS [~ean-prodname]
+    ,ApplyMap('(N3)EAN->ML-Prodname', ean, Null())      AS [~ean-ML-prodname]
+    ,ApplyMap('(G2)EAN->prodGrpId', ean, Null())        AS [~ean-prodgroup]
+    ,ApplyMap('(G3)EAN->ML-prodGrpId', ean, Null())     AS [~ean-ML-prodgroup]    
+    ,ApplyMap('(B2)EAN->brand', ean, Null())            AS [~ean-brand]
+    ,ApplyMap('(M2)EAN->manufacturer', ean, Null())     AS [~ean-manufacturer]
+    ,ApplyMap('(M3)EAN->ML-manufacturer', ean, Null())  AS [~ean-ML-manufacturer]
+  // Links zu den Mapping Tabellen
+    ,Text(ean)                                      AS [ean-prodname.ean]
+    ,Text(ean)                                      AS [ean-prodgroup.ean]
+    ,Text(ean)                                      AS [ean-brand.ean] 
+    ,Text(ean)                                      AS [ean-manufacturer.ean]
+;
+LOAD 
+	%productId
+	,Text(Subfield(product.all_eans, CHR(10))) AS ean 
+RESIDENT 
+	[~product]
+WHERE
+    Len(product.all_eans);
+
+// Projiziere alle EAN-gemappten Attribute, sofern eindeutig, auf die %productId in products
+// Eindeutig heißt auch, dass bei mehreren EANs pro Artikel (Monalisa hat das) alle EANs 
+// gemapped sein müssen (kein Null, daher wird Null auf einen Pseudowert ☐ gesetzt beim zählen)
+
+LEFT JOIN ([~product])
+LOAD
+    *
+    ,if(Len(product.name_2),        [~product.name_2_info])         AS [product.name_2_info]
+    ,if(Len(product.name_3),        [~product.name_3_info])         AS [product.name_3_info]    
+    ,if(Len(product.prodGrpId_2),   [~product.prodGrpId_2_info])    AS [product.prodGrpId_2_info]
+    ,if(Len(product.prodGrpId_3),   [~product.prodGrpId_3_info])    AS [product.prodGrpId_3_info]    
+    ,if(Len(product.brand_2),       [~product.brand_2_info])        AS [product.brand_2_info]
+    ,if(Len(product.manufacturer_2),[~product.manufacturer_2_info]) AS [product.manufacturer_2_info]
+    ,if(Len(product.manufacturer_3),[~product.manufacturer_3_info]) AS [product.manufacturer_3_info]
+;
+LOAD
+    %productId
+    ,Concat(DISTINCT   SubField(Coalesce([~ean-prodname],Chr(9744)),'$(i)',1),'|')     AS [~ean.prodnames]
+    ,If(Count(DISTINCT SubField(Coalesce([~ean-prodname],Chr(9744)),'$(i)',1)) = 1,
+                  Only(SubField(         [~ean-prodname],'$(i)',1)))                   AS product.name_2
+    ,Concat(DISTINCT  SubField(          [~ean-prodname],'$(i)',2), CHR(10))           AS [~product.name_2_info]
+
+    ,Concat(DISTINCT   SubField(Coalesce([~ean-ML-prodname],Chr(9744)),'$(i)',1),'|')  AS [~ean.ML-prodnames]
+    ,If(Count(DISTINCT SubField(Coalesce([~ean-ML-prodname],Chr(9744)),'$(i)',1)) = 1,
+                  Only(SubField(         [~ean-ML-prodname],'$(i)',1)))                AS product.name_3
+    ,Concat(DISTINCT  SubField(          [~ean-ML-prodname],'$(i)',2), CHR(10))        AS [~product.name_3_info]
+
+    ,Concat(DISTINCT   SubField(Coalesce([~ean-prodgroup],Chr(9744)),'$(i)',1),'|')    AS [~ean.prodgroups]
+    ,If(Count(DISTINCT SubField(Coalesce([~ean-prodgroup],Chr(9744)),'$(i)',1)) = 1,
+                  Only(SubField(         [~ean-prodgroup],'$(i)',1)))                  AS product.prodGrpId_2
+    ,Concat(DISTINCT  SubField(          [~ean-prodgroup],'$(i)',2), CHR(10))          AS [~product.prodGrpId_2_info]
+
+    ,Concat(DISTINCT   SubField(Coalesce([~ean-ML-prodgroup],Chr(9744)),'$(i)',1),'|')  AS [~ean.ML-prodgroups]
+    ,If(Count(DISTINCT SubField(Coalesce([~ean-ML-prodgroup],Chr(9744)),'$(i)',1)) = 1,
+                  Only(SubField(         [~ean-ML-prodgroup],'$(i)',1)))                AS product.prodGrpId_3
+    ,Concat(DISTINCT  SubField(          [~ean-ML-prodgroup],'$(i)',2), CHR(10))        AS [~product.prodGrpId_3_info]
+    
+    ,Concat(DISTINCT   SubField(Coalesce([~ean-brand],Chr(9744)),'$(i)',1),'|')        AS [~ean.brands]
+    ,If(Count(DISTINCT SubField(Coalesce([~ean-brand],Chr(9744)),'$(i)',1)) = 1,
+                  Only(SubField(         [~ean-brand],'$(i)',1)))                      AS product.brand_2
+    ,Concat(DISTINCT  SubField(          [~ean-brand],'$(i)',2), CHR(10))              AS [~product.brand_2_info]
+    
+    ,Concat(DISTINCT   SubField(Coalesce([~ean-manufacturer],Chr(9744)),'$(i)',1),'|') AS [~ean.manufacturers]
+    ,If(Count(DISTINCT SubField(Coalesce([~ean-manufacturer],Chr(9744)),'$(i)',1)) = 1,
+                  Only(SubField(         [~ean-manufacturer],'$(i)',1)))               AS product.manufacturer_2
+    ,Concat(DISTINCT  SubField(          [~ean-manufacturer],'$(i)',2), CHR(10))       AS [~product.manufacturer_2_info]
+    
+ //~ean-ML-manufacturer]
+    ,Concat(DISTINCT   SubField(Coalesce([~ean-ML-manufacturer],Chr(9744)),'$(i)',1),'|') AS [~ean.ML-manufacturers]
+    ,If(Count(DISTINCT SubField(Coalesce([~ean-ML-manufacturer],Chr(9744)),'$(i)',1)) = 1,
+                  Only(SubField(         [~ean-ML-manufacturer],'$(i)',1)))               AS product.manufacturer_3
+    ,Concat(DISTINCT  SubField(          [~ean-ML-manufacturer],'$(i)',2), CHR(10))       AS [~product.manufacturer_3_info]
+  
+RESIDENT
+	EANs
+GROUP BY
+    %productId;
+    
+DROP FIELDS 
+	[~product.name_2_info], [~product.name_3_info],
+	[~product.prodGrpId_2_info], [~product.prodGrpId_3_info],
+    [~product.brand_2_info], 
+    [~product.manufacturer_2_info], [~product.manufacturer_3_info];
+    
+DROP FIELDS 
+	[~ean-prodname], [~ean-ML-prodname], 
+	[~ean-prodgroup], [~ean-ML-prodgroup], 
+    [~ean-brand], 
+    [~ean-manufacturer], [~ean-ML-manufacturer]; 
+
+
+
+// Lade finale "product" Tabelle.
+
+product:
+LOAD 
+	*
+    ,If(Len([~product.name_info])        , CHR(9432) & CHR(10) & [~product.name_info]        , '') AS product.name_info
+    ,If(Len([~product.prodGrpId_info])   , CHR(9432) & CHR(10) & [~product.prodGrpId_info]   , '') AS product.prodGrpId_info
+    ,If(Len([~product.brand_info])       , CHR(9432) & CHR(10) & [~product.brand_info]       , '') AS product.brand_info
+    ,If(Len([~product.manufacturer_info]), CHR(9432) & CHR(10) & [~product.manufacturer_info], '') AS product.manufacturer_info
+    ,Pick(WildMatch([~product.name_info] , '*prodid-*','*ean-*','Monalisa*'), 
+        Dual('1:1-Mapping', rgb(157,225,154)), 
+        Dual('EAN-Mapping', rgb(231,236,163)),
+        Dual('Monalisa-EAN',rgb(255,185,51))                                                     ) AS product.name_color 
+    ,Pick(WildMatch([~product.prodGrpId_info] , '*prodid-*','*ean-*','*group-m*', '*Monalisa*'), 
+        Dual('1:1-Mapping',rgb(157,225,154)), 
+        Dual('EAN-Mapping',rgb(231,236,163)), 
+        Dual('KST->ML Gruppe-Map',rgb(188,169,225)),
+        Dual('Monalisa-Gruppe',rgb(255,185,51))                                                  )  AS product.prodGrpId_color 
+    ,Pick(WildMatch([~product.brand_info] , '*prodid-*','*ean-*'), 
+        Dual('1:1-Mapping', rgb(157,225,154)), 
+        Dual('EAN-Mapping', rgb(231,236,163))                                                    ) AS product.brand_color 
+    ,Pick(WildMatch([~product.manufacturer_info], '*prodid-*','*ean-*', '*Monalisa*'), 
+        Dual('1:1-Mapping', rgb(157,225,154)), 
+        Dual('EAN-Mapping', rgb(231,236,163)),
+        Dual('Monalisa-EAN', rgb(255,185,51))                                                    ) AS product.manufacturer_color 
+;
+LOAD
+	*
+// product name fields
+	,Coalesce(product.name_1, 
+    	product.name_2, 
+        product.name_3,
+    	product.name_orig)                                  AS product.name
+    ,Coalesce(product.name_1_info, 
+    	product.name_2_info,
+        product.name_3_info,
+        'original ' & product.source & ' product.name')     AS [~product.name_info]
+// product group fields
+	,Coalesce(product.prodGrpId_1, 
+    	product.prodGrpId_2, 
+        product.prodGrpId_3,
+        product.prodGrpId_orig)                             AS %prodGrpId   
+	,Coalesce(product.prodGrpId_1_info, 
+    	product.prodGrpId_2_info,
+        product.prodGrpId_3_info,
+        ApplyMap('prodGrpId->info',product.prodGrpId_orig)) AS [~product.prodGrpId_info]
+// brand fields
+	,Coalesce(product.brand_1, 
+    	product.brand_2)                                    AS product.brand   
+	,Coalesce(product.brand_1_info, 
+    	product.brand_2_info)                               AS [~product.brand_info] 
+// manufacturer fields
+	,Coalesce(product.manufacturer_1,
+    	product.manufacturer_2,
+        product.manufacturer_3,
+        product.manufacturer_orig)                          AS product.manufacturer   
+	,Coalesce(product.manufacturer_1_info, 
+    	product.manufacturer_2_info,
+        product.manufacturer_3_info,
+        If(Len(product.manufacturer_orig), 'original ' & product.source & ' manufacturer')
+    )                                                       AS [~product.manufacturer_info]       
+RESIDENT
+	[~product];
+    
+DROP TABLE [~product];
+//DROP FIELDS [~product.name_info], product.name_1_info, product.name_2_info FROM product;
+//DROP FIELDS [~product.prodGrpId_info], product.prodGrpId_1_info, product.prodGrpId_2_info FROM product;
+//DROP FIELDS [~product.brand_info], product.brand_1_info, product.brand_2_info FROM product;
+//DROP FIELDS [~product.manufacturer_info], product.manufacturer_1_info, product.manufacturer_2_info FROM product;
+
+// Neu: Fix 22-Okt-2024
+// Get Path from Productgroup und die zugehörige marge
+LEFT JOIN (product)    
+LOAD 
+    %prodGrpId
+    // Add Field
+    ,productgroup.Path AS product.group.Path
+    ,productgroup.marge.SK AS product.group.marge.SK
+    ,productgroup.marge.ML AS product.group.marge.ML
+    ,productgroup.marge.KST AS product.group.marge.KST
+RESIDENT
+    productgroup;
+
+// Finde die einzig richtige marge aus drei möglichen spalten anhand von
+// product.source 
+
+product2:
+LOAD
+    *
+    ,Pick(WildMatch(product.source, 'SK', 'Schnepf', 'ML', 'Monalisa', 'KST', '*')
+        ,product.group.marge.SK, product.group.marge.SK
+        ,product.group.marge.ML, product.group.marge.ML
+        ,product.group.marge.KST, Null()
+    ) AS productgroup.marge
+RESIDENT
+    product;
+
+DROP TABLE product;
+RENAME TABLE product2 TO product;
+DROP FIELDS product.group.marge.SK, product.group.marge.ML, product.group.marge.KST FROM product;
+
+STORE product INTO [$(vQvdPath_Store)/product.qvd] (qvd);
+CALL GetQvdFieldNames('product', vQvdPath_Store);
+
+SET vInf = [
+CHR(9432) & CHR(10) 
+&'Erster Verkauf: ' & Timestamp(postedDate_Min) & CHR(10)
+&'Letzter Verkauf: ' & Timestamp(postedDate_Max) & CHR(10)
+&'Nettoumsatz 2020 ' & Num(Sum_2020,'#.##0,00',',','.') & CHR(10)
+&'Nettoumsatz 2021 ' & Num(Sum_2021,'#.##0,00',',','.') & CHR(10)
+];
+
+usedProducts2:
+LOAD 
+	*,
+    $(vInf) & 'Tankstelle: ' AS salesInfo
+    ,Subfield(%productId, '|', 2) AS %locationId
+FROM
+	[$(vQvdPath_Transf_KST)/usedProducts2.qvd] (qvd);
+
+CONCATENATE
+LOAD 
+    *,
+    $(vInf) AS salesInfo
+FROM
+	[$(vQvdPath_Transf_Monalisa)/usedProducts2.qvd] (qvd);
+
+LEFT JOIN (usedProducts2)
+LOAD
+    %locationId,
+    Tankstelle
+FROM 
+    [$(vQvdPath_Store)/location.qvd] (qvd);
+
+

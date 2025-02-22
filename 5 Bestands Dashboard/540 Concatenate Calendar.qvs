@@ -1,0 +1,35 @@
+LET vNoOfRows = NoOfRows('Calendar');
+
+hinzu:
+NOCONCATENATE LOAD DISTINCT
+	Floor(posbasket.posted_date) AS posbasket.posted_date
+RESIDENT
+	facts
+WHERE
+	Len(posbasket.posted_date);
+    
+hinzu2: LOAD * INLINE [Tag];
+
+FOR v = 0 TO -49 STEP -1
+
+    TRACE offset $(v);
+
+    CONCATENATE (hinzu2)
+    LOAD DISTINCT
+        Date(Floor(posbasket.posted_date)) AS Tag
+        ,'sales:' & Date(posbasket.posted_date + $(v),'DD.MM.YYYY') AS fact.from_to
+        ,$(v) AS offset
+    RESIDENT
+        hinzu;
+    
+NEXT v
+
+LET vNoOfRows2 = NoOfRows('Calendar');
+
+CONCATENATE (Calendar) LOAD * RESIDENT hinzu2;
+
+DROP TABLES hinzu, hinzu2;
+
+TRACE Calendar: gewachseon von $(vNoOfRows) auf $(vNoOfRows2) Zeilen;
+
+

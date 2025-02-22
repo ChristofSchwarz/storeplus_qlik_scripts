@@ -1,0 +1,65 @@
+// Mach den Kalender etwas kürzer, beginnend mit 01.01.2022
+facts:
+LOAD 
+	*
+//     ,Hash128(stock.valid_from, stock.valid_to) AS fact.from_to_hash
+    ,'stock:' & Date(stock.valid_from, 'DD.MM.YYYY') & '-' &  Date(stock.valid_to,'DD.MM.YYYY') AS fact.from_to
+    ,'stock' AS facttype
+FROM 
+	[$(vQVDLoadFolder)/stock_transaction_daily.qvd] (qvd);
+
+
+CALL GetMinMaxDate('stock.valid_from');
+
+// Mach den Kalender etwas kürzer, beginnend mit 01.01.2022
+
+INNER JOIN (tmpCalendarFromMinToMax)
+LOAD 
+	tmpRunningDate,
+    Date(tmpRunningDate, 'DD.MM.YYYY') AS Tag
+RESIDENT 
+	tmpCalendarFromMinToMax
+WHERE 
+	tmpRunningDate >= MakeDate(2022,01,01);
+
+TRACE Performing IntervalMatch ...;
+
+// LEFT JOIN (facts)
+Interval:
+IntervalMatch(tmpRunningDate)
+LOAD
+   stock.valid_from, stock.valid_to
+RESIDENT
+   facts;
+
+
+// Load facts again and sort it by station, product, date
+facts2:
+NOCONCATENATE LOAD
+	*
+    ,If(Peek('%productId', -1, 'facts2') = %productId AND
+    	Peek('%locationId', -1, 'facts2') = %locationId,
+        RangeSum(stockamount, -Peek('stockamount', -1, 'facts2'))) AS stockchange
+RESIDENT
+	facts
+ORDER BY	   
+	%locationId,
+    %productId,
+    stock.valid_from
+;
+
+DROP TABLE facts;
+RENAME TABLE facts2 TO facts;
+
+// load Calendar again for performance combine valid_from and valid_to fields into one Hash
+
+Calendar:
+LOAD DISTINCT
+// 	Hash128(stock.valid_from, stock.valid_to) AS fact.from_to_hash
+	'stock:' & Date(stock.valid_from,'DD.MM.YYYY') & '-' & Date(stock.valid_to,'DD.MM.YYYY') AS fact.from_to
+    ,Date(tmpRunningDate, 'DD.MM.YYYY') AS Tag
+    ,0 AS offset
+RESIDENT
+	Interval;
+   
+DROP TABLES Interval, tmpCalendarFromMinToMax;

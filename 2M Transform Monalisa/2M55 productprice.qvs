@@ -1,0 +1,101 @@
+[~productprice]:
+// LOAD
+//     *
+//     ,Hash160(%productId, productprice.validfrom, productprice.validto) AS %productId_validfrom_to
+// ;
+LOAD
+//     'ML|' & product                                 AS %productId
+     uid                                            AS productprice.uid
+    ,creation_date                                  AS productprice.creation_date
+//     ,creation_user                                  AS productprice.creation_user
+//     ,modification_date                              AS productprice.modification_date
+//     ,modification_user                              AS productprice.modification_user
+    ,valid                                          AS productprice.valid
+    ,baseprice                                      AS productprice.baseprice
+//     ,location                                       AS productprice.location
+    ,TimeStamp(validfrom,'YYYY-MM-DD hh:mm:ss.fff') AS productprice.validfrom
+    ,TimeStamp(validto,'YYYY-MM-DD hh:mm:ss.fff')   AS productprice.validto_orig
+//     ,TimeStamp(Coalesce(validto, MakeDate(2199,12,31)),
+//                          'YYYY-MM-DD hh:mm:ss.fff') AS productprice.validto
+    ,product                                        AS productprice.product
+    ,pricetype                                      AS productprice.pricetype
+    ,currency                                       AS productprice.currency
+    ,customized_price                               AS productprice.customized_price
+//     ,s2g_version                                       AS productprice.
+    ,discount                                       AS productprice.discount
+FROM 
+    [$(vQVDLoadFolder)/productprice.qvd] (qvd)
+WHERE
+    pricetype = 'EK'   // we only need Einkaufspreise (EK)
+    AND valid LIKE 'True';
+    
+// Lets set our own validto date based on the following row's valid from date.
+
+[productprice]:
+LOAD 
+	*,
+    Timestamp(If(productprice.product = Peek('productprice.product', -1, 'productprice'), 
+        Peek('productprice.validfrom', -1, 'productprice') - 1/24/3600/1000,
+        MakeDate(2199,12,31))
+        ,'YYYY-MM-DD hh:mm:ss.fff') AS productprice.validto
+RESIDENT 
+    [~productprice]
+ORDER BY 
+    productprice.product ASC, 
+    productprice.validfrom DESC, 
+    productprice.creation_date ASC
+; //productprice.validto_orig ASC;
+
+DROP TABLE [~productprice];
+
+LET vRowsBefore = NoOfRows('posbasket_item');
+
+LEFT JOIN (posbasket_item)
+// JOIN ON: item.creation_date, productprice.product
+// ADD FIELDS: productprice.validfrom, productprice.validto
+// [~productprice_interval]:
+//INTERVALMATCH (item.creation_date, productprice.product)
+INTERVALMATCH (posbasket.posted_date, productprice.product)
+LOAD 
+    productprice.validfrom
+    ,productprice.validto
+    ,productprice.product
+RESIDENT
+    [productprice]
+WHERE
+     productprice.validto > productprice.validfrom
+;
+//   ▲ Sometimes multiple rows with identical validfrom for a %productId are found. Only keep the one
+//     where the validto is behind validfrom ...
+
+  
+
+IF NoOfRows('posbasket_item') <> vRowsBefore THEN 
+    [Error: Interval Match led to a duplication of rows in table "posbasket_item". Seems like validfrom-validto periods are not unique per item.creation_date and %productId ...];
+END IF;
+
+
+STORE [productprice] INTO [$(vQVDSaveToFolder)/productprice.qvd] (qvd);
+CALL GetQvdFieldNames('productprice', vQVDSaveToFolder);
+
+LEFT JOIN (posbasket_item)
+LOAD
+  // JOIN ON
+    productprice.validfrom
+    ,productprice.validto
+    ,productprice.product
+ // ADD fields
+    ,Concat(productprice.uid,';') AS productprice.uids
+    ,Only(productprice.baseprice) AS item.cost_price
+RESIDENT
+    productprice
+GROUP BY
+    productprice.validfrom
+    ,productprice.validto
+    ,productprice.product
+;
+
+IF NoOfRows('posbasket_item') <> vRowsBefore THEN 
+    [Error: Left join of productprice into posbasket_item table led to a duplication of rows. This should not happen.];
+END IF;
+

@@ -1,0 +1,181 @@
+// Merken wir uns, welche Produkte verwendet werden und markieren diese 
+
+usedProducts_KST:
+MAPPING LOAD 
+    %productId,
+    usedProduct
+FROM [$(vQvdPath_Transf_KST)/usedProducts.qvd] (qvd);
+ 
+usedProducts_Monalisa:
+MAPPING LOAD 
+    %productId,
+    usedProduct
+FROM [$(vQvdPath_Transf_Monalisa)/usedProducts.qvd] (qvd);
+
+SET vTS = ['DD.MM.YYYY hh:ss:mm'];
+
+// **********************************
+// *** Mappings for Product name  ***
+// **********************************
+
+// Mapping N1: Get Name from ProductID 
+// manual correction mapping-prodname/prodid-prodname.css (Prio 1)
+
+[(N1)prodMappingId->productname]:
+MAPPING LOAD
+	[prodid-prodname.prodMappingId], 
+    [prodid-prodname.name] & '$(i)prodid-prodname.css: ' & [prodid-prodname.user] & ' ' & Timestamp([prodid-prodname.timestamp], $(vTS))
+RESIDENT
+	[prodid-prodname];
+    
+// Mapping N2: Get Name from EAN 
+// manual correction mapping-prodname/ean-prodname.css (Prio 2)
+
+[(N2)EAN->productname]:
+MAPPING LOAD
+	[ean-prodname.ean], 
+    [ean-prodname.name] & '$(i)ean-prodname.css: ' & [ean-prodname.user] & ' ' & Timestamp([ean-prodname.timestamp], $(vTS))
+RESIDENT
+	[ean-prodname];
+
+// Mapping N3: Get Name from a Monalisa EAN (Prio 3)
+
+[(N3)EAN->ML-Prodname]: 
+MAPPING LOAD 
+    Text(SubField(product.all_eans, CHR(10))) AS EAN
+    ,product.name & '$(i)ProduktName aus Monalisa-Produkt mit EAN: ' & %productId AS pName          
+FROM
+	[$(vQvdPath_Transf_Monalisa)/product.qvd] (qvd)
+WHERE 
+	Len(product.all_eans);
+
+
+
+// **********************************
+// *** Mappings for Product Group ***
+// **********************************
+
+// Mapping G1: Get ProdGroup from Product Id 
+// manual correction mapping-prodgroup/prodid-prodgroup.css (Prio 1)
+
+[(G1)prodMappingId->prodGrpId]:
+MAPPING LOAD 
+	[prodid-prodgroup.prodMappingId]
+	,[prodGrpId] & '$(i)prodid-prodgroup.css: ' & [prodid-prodgroup.user] & ' ' & Timestamp([prodid-prodgroup.timestamp], $(vTS))
+WHERE 
+	Len([prodGrpId]); // keine mappings wo nicht-existierender Path verwendet wurde
+LOAD
+    [prodid-prodgroup.prodMappingId]
+    ,ApplyMap('path->%prodGrpId'
+    	,[prodid-prodgroup.path] 
+        ,Null()
+    ) AS [prodGrpId]
+    ,[prodid-prodgroup.user]
+    ,[prodid-prodgroup.timestamp] 
+RESIDENT
+    [prodid-prodgroup];
+
+
+// Mapping G2  Get ProdGroup from EAN Mapping 
+// manual correction mapping-prodgroup/ean-prodgroup.css (Prio 2)
+
+[(G2)EAN->prodGrpId]:
+MAPPING LOAD 
+	Lookup_EAN
+    ,[prodGrpId] & '$(i)ean-prodname.css: ' & [ean-prodgroup.user] & ' ' & Timestamp([ean-prodgroup.timestamp], $(vTS))
+WHERE 
+	Len([prodGrpId]); // keine mappings wo nicht-existente Path verwendet wurde
+LOAD
+	[ean-prodgroup.ean] AS Lookup_EAN
+    ,ApplyMap('path->%prodGrpId'
+    	,[ean-prodgroup.path] 
+        , Null()
+    ) AS [prodGrpId]
+    ,[ean-prodgroup.user]
+    ,[ean-prodgroup.timestamp] 
+RESIDENT
+    [ean-prodgroup];
+    
+    
+// Mapping G3: Get Group from Monalisa EAN (Prio 3)
+
+[(G3)EAN->ML-prodGrpId]: 
+MAPPING LOAD 
+    Text(SubField(product.all_eans, CHR(10))) AS EAN
+    ,%prodGrpId & '$(i)ProduktGruppe aus Monalisa-Produkt mit EAN: ' & %productId AS pName          
+FROM
+	[$(vQvdPath_Transf_Monalisa)/product.qvd] (qvd)
+WHERE 
+	Len(product.all_eans);
+    
+
+// **********************************
+// *** Mappings for Manufacturer  ***
+// **********************************
+
+// Mapping M1 Get Manufacturer from Product ID
+// manual correction mapping-manufacturer/prodid-manufacturer.css (Prio 1)
+
+[(M1)prodMappingId->manufacturer]:
+MAPPING LOAD
+	[prodid-manufacturer.prodMappingId] AS Lookup_EAN,
+	[prodid-manufacturer.manufacturer] & '$(i)prodid-manufacturer.css: ' & [prodid-manufacturer.user] & ' ' & Timestamp([prodid-manufacturer.timestamp], $(vTS))
+RESIDENT
+    [prodid-manufacturer];
+    
+// Mapping M2 Get Manufacturer from EAN
+// manual correction mapping-manufacturer/ean-manufacturer.css (Prio 2)
+
+[(M2)EAN->manufacturer]:
+MAPPING LOAD
+	[ean-manufacturer.ean] AS Lookup_EAN,
+	[ean-manufacturer.manufacturer] & '$(i)ean-manufacturer.css: ' & [ean-manufacturer.user] & ' ' & Timestamp([ean-manufacturer.timestamp], $(vTS))
+RESIDENT
+    [ean-manufacturer];
+    
+// Mapping M3 Get Manufacturer from Monalisa product (Prio 3)
+
+[(M3)EAN->ML-manufacturer]: 
+MAPPING LOAD 
+    Text(SubField(product.all_eans, CHR(10))) AS EAN
+    ,product.manufacturer & '$(i)Manufacturer aus Monalisa-Produkt mit EAN: ' & %productId AS pName          
+FROM
+	[$(vQvdPath_Transf_Monalisa)/product.qvd] (qvd)
+WHERE 
+	Len(product.all_eans) AND Len(product.manufacturer);
+
+
+
+// ****************************
+// *** Mappings for Brand   ***
+// ****************************
+
+// Mapping B1 Get Brand by Product ID 
+// manual correction mapping-brand/prodid-brand.css (Prio 1)
+
+[(B1)prodMappingId->brand]:
+MAPPING LOAD
+	[prodid-brand.prodMappingId] AS Lookup_EAN,
+	[prodid-brand.brand] & '$(i)prodid-brand.css: ' & [prodid-brand.user] & ' ' & Timestamp([prodid-brand.timestamp], $(vTS))
+RESIDENT
+    [prodid-brand];
+    
+    
+// Mapping B2 Get Brand by EAN 
+// manual correction mapping-brand/ean-brand.css (Prio 2)
+
+[(B2)EAN->brand]:
+MAPPING LOAD
+	[ean-brand.ean] AS Lookup_EAN,
+	[ean-brand.brand] & '$(i)ean-brand.css: ' & [ean-brand.user] & ' ' & Timestamp([ean-brand.timestamp], $(vTS))
+RESIDENT
+    [ean-brand];
+    
+
+
+
+
+    
+
+    
+

@@ -1,0 +1,94 @@
+lookup_partner_uid:
+MAPPING LOAD
+    uid                        AS %partnerId
+//    ,creation_date              AS partner.creation_date
+//    ,creation_user              AS partner.creation_user
+//    ,modification_date          AS partner.modification_date
+//    ,modification_user          AS partner.modification_user
+//    ,valid                      AS partner.valid
+//    ,first_name                 AS partner.first_name
+//    ,mandator                   AS partner.mandator
+   ,name                       AS partner.name
+//    ,title                      AS partner.title
+//    ,s2g_version                AS partner.s2g_version
+//    ,type                       AS partner.type
+//    ,temp_id                    AS partner.temp_id
+FROM 
+	[$(vQVDLoadFolder)/partner.qvd] (qvd)
+WHERE
+	valid = 'True';
+
+// MAPPING to remove unneeded words (form of company such as GMBH, GESMBH ...) from partner
+
+LIB CONNECT TO 'QRS-API GET';
+
+remove_form_of_company: 
+MAPPING LOAD
+    Replace(@Value,'?',' ') AS searchFor,
+    '' AS ReplaceWith
+WHERE 
+    NOT IsNull([__FK_values]);
+SQL SELECT 
+	"__KEY_root",
+	(SELECT 
+		"@Value",
+		"__FK_values"
+	FROM "values" FK "__FK_values" ArrayValueAlias "@Value")
+FROM JSON (wrap on) "root" PK "__KEY_root"
+WITH CONNECTION (
+	URL "https://localhost/headervp/extensions/settings/remove-form-company.json",
+    HTTPHEADER "runas" "qlik.script"
+);
+
+
+// renamings for product partners
+
+[fix_productpartner]:
+MAPPING LOAD
+	manufacturer_names.from,
+    manufacturer_names.to
+RESIDENT
+    manufacturer_names;
+
+
+productpartner:
+LOAD 
+    *,
+    ApplyMap('fix_productpartner', productpartner.name_tmp, productpartner.name_tmp) AS productpartner.name
+;
+LOAD
+    [uid]                   AS [productpartner.uid],
+    [external_order_number] AS [productpartner.external_order_number],
+//     [is_default]            AS [partner.is_default],
+    Trim(Replace(
+      MapSubString('remove_form_of_company', 
+        Upper(ApplyMap('lookup_partner_uid', [partner_uid])) & '|')
+        ,'|',''))           AS [productpartner.name_tmp],
+    ApplyMap('lookup_partner_uid', [partner_uid]) AS productpartner.name_orig,    
+    [product_partner_type]  AS [productpartner.product_partner_type],
+    [product]               AS [productpartner.product],
+    'ML|' & product         AS [%productId]
+FROM 
+	[$(vQVDLoadFolder)/productpartner.qvd] (qvd)
+WHERE
+	valid = 'True';
+
+DROP FIELD productpartner.name_tmp FROM productpartner;
+
+STORE productpartner INTO [$(vQVDSaveToFolder)/productpartner.qvd] (qvd);
+CALL GetQvdFieldNames('productpartner', vQVDSaveToFolder);
+
+// // Lookup for the partner's external_order_number (material number of supplier e.g. Lekkerland)
+
+// map_external_order_number:
+// MAPPING LOAD DISTINCT
+// 	 %productId, 
+//      productpartner.name & ': ' & productpartner.external_order_number
+// RESIDENT
+// 	productpartner
+// WHERE
+// 	Len(productpartner.external_order_number) AND NOT productpartner.external_order_number = 0;
+    
+
+    
+    

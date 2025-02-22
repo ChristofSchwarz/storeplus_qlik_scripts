@@ -1,0 +1,69 @@
+/*
+
+stock_transaction:
+LOAD
+    storage_uid AS %storageId
+	,'ML|' & product_uid AS %productId
+    ,posting_day AS posting_timestamp
+    ,Floor(posting_day) AS stock.valid_from
+    ,stock_before
+	,quantity
+    ,If(quantity > 0, '+', '-') AS direction
+    ,RangeSum(stock_before, quantity) AS stockamount
+    ,base_rate_unit
+	,stock_transaction_type
+FROM
+	[lib://D-QVD-aaaa/Monalisa/1.Extract/stock_transaction.qvd] (qvd)
+WHERE
+	valid = 'True'
+;
+
+INNER JOIN
+LOAD
+	uid AS %storageId,
+    'ML|' & location AS %locationId
+FROM
+	[lib://D-QVD-aaaa/Monalisa/1.Extract/storage.qvd] (qvd)
+// WHERE
+//     uid = '0a95ce63-e2b4-4b66-b72f-f4728a4d6b84'
+;
+TRACE performing GROUP BY ... will take a minute or so;
+LET vNow = Now();
+
+tmp_stock_transaction_daily:
+LOAD
+	%productId
+    ,%locationId
+    ,stock.valid_from
+    ,Concat(DISTINCT base_rate_unit, ',') AS base_rate_unit
+    ,FirstSortedValue(stockamount, -posting_timestamp) AS stockamount
+//     ,Sum(If(direction='+', quantity)) AS additions
+//     ,Sum(If(direction='-', quantity)) AS reductions
+RESIDENT
+	stock_transaction
+GROUP BY
+    %productId, %locationId, stock.valid_from
+;
+LET vNow = Round((Now() - vNow)*24*3600, 0.1);
+TRACE GROUP BY done in $(vNow) sec;
+
+stock_transaction_daily:
+LOAD
+	*
+    ,Hash160(%productId, %locationId) AS productLocationHash
+    ,If(Hash160(%productId, %locationId) = Peek('productLocationHash', -1, 'stock_transaction_daily')
+    	,Peek('stock.valid_from', -1, 'stock_transaction_daily') - 1    //  -1/24/3600
+        ,109210) AS stock.valid_to
+RESIDENT
+	tmp_stock_transaction_daily
+ORDER BY
+     %productId ASC, %locationId ASC, stock.valid_from DESC
+;
+
+DROP TABLE stock_transaction, tmp_stock_transaction_daily;
+
+// STORE stock_transaction_daily INTO [lib://D-QVD-aaaa/Monalisa/2.Transform/stock_transaction_daily.qvd] (qvd);
+
+// DROP TABLE stock_transaction_daily;
+
+*/

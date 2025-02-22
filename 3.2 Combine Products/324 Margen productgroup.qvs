@@ -1,0 +1,109 @@
+marge:
+LOAD
+	*
+    ,RangeMax(Peek('marge.maxLevel'), marge.level) AS marge.maxLevel
+    ,RowNo()                                       AS marge.autoId
+;
+// LOAD 
+// 	Exists('productgroup.Path', productgroup)      AS marge.productgroupExists
+//     ,SubStringCount(productgroup, '\') + 1         AS marge.level
+// 	,productgroup                                  AS productgroup.Path
+//     ,productgroup                                  AS marge.Path
+//     ,Marge/100                                     AS marge
+LOAD
+    //Trim(SubField(Source, ','))                        AS marge.sourceKey
+    [Produktgruppe Pfad]                              AS marge.Path
+    //,[Produktgruppe Pfad]                              AS productgroup.Path
+    ,Exists('productgroup.Path', [Produktgruppe Pfad]) AS marge.productgroupExists
+    ,SubStringCount([Produktgruppe Pfad], '\') + 1     AS marge.level
+    //,Marge%                                            AS marge
+    ,if(Source LIKE '*SK*', Marge%)                    AS marge.SK
+    ,if(Source LIKE '*KST*', Marge%)                   AS marge.KST
+    ,if(Source LIKE '*ML*', Marge%)                    AS marge.ML
+FROM 
+    [$(vMargenExcel)]
+    (ooxml, embedded labels, header is 1 lines, table is [Marge Overrule])
+WHERE
+    WildMatch(Valid, 'J*', 'Y*', '1');
+
+
+LET vJoinOn = '';
+// LET vCoalesce = '';
+LET vCoalesce1 = '';
+LET vCoalesce2 = '';
+LET vCoalesce3 = '';
+
+FOR vLevel = 1 TO Peek('marge.maxLevel', -1, 'marge')  // diese Schleife geht bis zum max Tiefe der Produktgruppen, also 4
+
+	LET vJoinOn = vJoinOn & If(Len(vJoinOn), CHR(10) & ',')
+    	& 'SubField(marge.Path, ''\'', $(vLevel)) AS productgroup.name$(vLevel)';
+        
+    // LET vCoalesce = 'productgroup.marge$(vLevel)' & If(Len(vCoalesce), ', ') & vCoalesce;
+    LET vCoalesce1 = 'productgroup.marge$(vLevel).SK' & If(Len(vCoalesce1), ', ') & vCoalesce1;
+    LET vCoalesce2 = 'productgroup.marge$(vLevel).ML' & If(Len(vCoalesce2), ', ') & vCoalesce2;
+    LET vCoalesce3 = 'productgroup.marge$(vLevel).KST' & If(Len(vCoalesce3), ', ') & vCoalesce3;
+    
+    // LET vCoalesce2 = 'productgroup.margeAutoId$(vLevel)' & If(Len(vCoalesce2), ', ') & vCoalesce2;
+    
+	LET vRowsBefore = NoOfRows('productgroup');
+    
+
+	LEFT JOIN (productgroup)
+    LOAD
+        // JoinOn
+        //marge.sourceKey AS productgroup.sourceKey
+    	$(vJoinOn)
+        // Add fields
+        ,marge.SK AS productgroup.marge$(vLevel).SK
+        ,marge.ML AS productgroup.marge$(vLevel).ML
+        ,marge.KST AS productgroup.marge$(vLevel).KST    
+        // ,marge.autoId AS productgroup.margeAutoId$(vLevel)
+    RESIDENT
+    	marge
+    WHERE
+    	marge.level = $(vLevel);
+
+
+	LET vRowsAfter = NoOfRows('productgroup');
+    
+    TRACE JOINing Level $(vLevel) marge into productgroup ($(vRowsBefore) -> $(vRowsAfter) rows);
+
+NEXT vLevel
+
+// marge.txt ist nur zur Info eine leicht angereichterte Kopie der Sharepoint Excel Konfig
+// https://stiglechner.sharepoint.com/:x:/r/sites/O365_Qlik_Sense_OneDrive_Group/_layouts/15/doc2.aspx?sourcedoc=%7B5E0BAAFD-604B-411C-ACC4-0B8A1C108758%7D&file=UserTankstellen%20SheetsMapping.xlsx
+
+STORE marge INTO [$(vQvdPath_Store)/marge.txt] (txt, delimiter is '\t');
+
+// Finaler Load von productgroup, die marge mit dem höchsten level wird genommen
+
+productgroup2:
+LOAD
+	*
+    // ,Coalesce($(vCoalesce), 0) AS productgroup.marge  // default 0 wird nicht mehr gebraucht 28.08.2024
+    // ,Coalesce($(vCoalesce)) AS productgroup.marge
+    ,Coalesce($(vCoalesce1)) AS productgroup.marge.SK
+    ,Coalesce($(vCoalesce2)) AS productgroup.marge.ML
+    ,Coalesce($(vCoalesce3)) AS productgroup.marge.KST
+    // ,Coalesce($(vCoalesce2)) AS marge.autoId
+RESIDENT
+	productgroup;
+ 
+DROP TABLE productgroup;
+RENAME TABLE productgroup2 TO productgroup;
+// DROP FIELDS $(vCoalesce) FROM productgroup;
+DROP FIELDS $(vCoalesce1) FROM productgroup;
+DROP FIELDS $(vCoalesce2) FROM productgroup;
+DROP FIELDS $(vCoalesce3) FROM productgroup;
+// DROP FIELD productgroup.isSchnepfXlsMapping FROM productgroup;
+
+STORE productgroup INTO [$(vQvdPath_Store)/productgroup.qvd] (qvd);
+CALL GetQvdFieldNames('productgroup', vQvdPath_Store);
+
+// delete variables
+LET vCoalesce = Null();
+LET vCoalesce1 = Null();
+LET vCoalesce2 = Null();
+LET vCoalesce3 = Null();
+LET vJoinOn = Null();
+

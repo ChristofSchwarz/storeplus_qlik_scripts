@@ -1,0 +1,30 @@
+SET vBestand = Sum({<offset={0}>} stockamount);
+SET vBestandLetzte2m = Sum({< offset={0}, Tag={">=$:(=AddMonths(Max(Tag),-2))<=$:(=MaxString(Tag))"} >} stockamount);
+SET vBestandZuletzt= Sum({< offset={0}, Tag={"$:(=MaxString(Tag))"} >} stockamount);
+
+SET vAbsatzAmTag = Sum({<offset={0}>} item.quantity);
+SET vAbsatzLetzteNTage = Sum({<offset={">-$:(vOffset)"}>} [item.quantity]);
+SET vAvgAbsatzLetzteNTage = ($(vAbsatzLetzteNTage) / vOffset);
+SET vReichweite = $(vBestand) / $(vAvgAbsatzLetzteNTage);
+
+CALL FixVariables('vAbsatzLetzteNTage, vAvgAbsatzLetzteNTage, vReichweite, vBestandLetzte2m, vBestandZuletzt');
+
+SET vCalcCondi1 = GetSelectedCount(Tag) > 0 AND (Len(%locationId) OR Len(%productId));
+SET vCalcCondMsg1 = If(NOT GetSelectedCount(Tag), 'Bitte wählen Sie einen bestimmten Tag aus.'
+	,'Bitte wählen Sie entweder eine Location oder ein Produkt aus');
+    
+    
+SET vCalcCondi2 = Len(Tag) AND Count(DISTINCT %productId < 10);
+
+LET vZugängeFilterÜber = 0; 
+SET vZugängeAnz = -Sum({<offset={0}>} stockchange>$:(vZugängeFilterÜber));
+SET vZugängeDatumListe = Concat({<offset={0}, stockchange *= {">$:(vZugängeFilterÜber)"}>} Date(stock.valid_from), ' , ');
+SET vZugängeSumme = Sum({<offset={0}, stockchange *= {">$:(vZugängeFilterÜber)"}>} stockchange);
+SET vBestandBeiZugang = Sum({<offset={0}, stockchange *= {">$:(vZugängeFilterÜber)"}>} stockamount);
+SET vZugängeLetzteDatum = Date(Max({<offset={0}, stockchange *= {">$:(vZugängeFilterÜber)"}>} stock.valid_from));
+SET vZugängeLetzteAnzahl = FirstSortedValue({<offset={0}, stockchange *= {">$:(vZugängeFilterÜber)"}>} stockchange, -stock.valid_from);
+SET vZugängeEinheit = Concat({<offset={0}, stockchange *= {">$:(vZugängeFilterÜber)"}>} DISTINCT base_rate_unit, ' , '); 
+CALL FixVariables('vZugängeAnz, vZugängeDatumListe, vZugängeSumme, vBestandBeiZugang, vZugängeLetzteDatum');
+CALL FixVariables('vZugängeEinheit, vZugängeLetzteAnzahl');
+
+CALL CreatePrevNextVar('Tag', 'timestamp');

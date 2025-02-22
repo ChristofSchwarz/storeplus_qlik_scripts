@@ -1,0 +1,5 @@
+// Settings für alle Apps (QVD Generatoren aus Extract, Transform sowie
+// Dashboards
+
+SET vBerechtigungenExcel = [lib://Office_365_Sharepoint/Freigegebene Dokumente/Qlik Files/ROHDATEN FÜR SICHTUNG/MAPPINGS/UserTankstellen+SheetsMapping.xlsx];
+LET vMargenExcel = vBerechtigungenExcel;

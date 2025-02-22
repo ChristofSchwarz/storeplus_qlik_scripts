@@ -1,0 +1,64 @@
+/*
+Change-History
+01-Sep-2022, Christof Schwarz, location tabelle wird aus einer Extension-Tabelle angereichert, nicht mehr aus Excel
+*/
+
+CALL GetQvdFieldNames('location', vQvdPath_Transf_KST);
+CALL GetQvdFieldNames('location', vQvdPath_Transf_Monalisa);
+
+location:
+LOAD * FROM [$(vQvdPath_Transf_KST)/location.qvd] (qvd);
+CONCATENATE 
+LOAD * FROM [$(vQvdPath_Transf_Monalisa)/location.qvd] (qvd);
+LET vRowsBefore = NoOfRows('location');
+
+
+
+LEFT JOIN (location)
+LOAD
+	// Join On
+//     %kstStation,
+    [Stations-Nummer],
+    // Add fields
+    Tankstelle,
+    Gebietsleiter,
+    IstTankautomat,
+    Land,
+    Bundesland,
+    PLZ,
+    Stadt,
+    Adresse,
+    Lat,
+    Long
+FROM 
+	[$(vBerechtigungenExcel)] 
+    (ooxml, embedded labels, table is Tankstellen);
+
+
+LET vRowsAfter = NoOfRows('location');
+
+
+location2:
+LOAD 
+	%locationId
+    ,[Stations-Nummer]
+    ,Coalesce(Tankstelle, location.name, [Stations-Nummer]) AS Tankstelle
+//     ,Typ
+    ,Gebietsleiter
+    ,Adresse
+    ,PLZ
+    ,Stadt
+    ,Bundesland
+    ,Lat
+    ,Long
+RESIDENT 
+    location;
+
+DROP TABLE location;
+RENAME TABLE location2 TO location;
+
+STORE location INTO [$(vQvdPath_Store)/location.qvd] (qvd);
+// DROP TABLE location;
+
+CALL GetQvdFieldNames('location', vQvdPath_Store);
+

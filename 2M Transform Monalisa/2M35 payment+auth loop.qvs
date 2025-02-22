@@ -1,0 +1,114 @@
+FOR EACH vYear IN $(vYears)
+    TRACE Loading payment data for year $(vYear) ...;
+     
+    payment_auth:
+    LOAD
+
+         'ML|' & payment.posbasket_uid   AS %basketId
+        ,'ML|' & payment.uid             AS %paymentId
+              
+        ,payment.uid                     AS payment.uid
+     // ,payment.creation_date           AS payment.creation_date
+     // ,payment.creation_user           AS payment.creation_user
+     // ,payment.modification_date       AS payment.modification_date
+     // ,payment.modification_user       AS payment.modification_user
+     // ,pay.valid                       AS payment.valid     
+        ,payment.additional_text         AS payment.additional_text
+        ,payment.amount                  AS payment.amount
+//         ,payment.cashier                 AS payment.cashier
+        ,payment.external_card_reference AS payment.external_card_reference
+        ,payment.external_reference      AS payment.external_reference
+        ,payment.pos_id                  AS payment.pos_id
+     // ,payment.reference_signature     AS payment.reference_signature
+     // ,payment.posbasket_uid           AS payment.posbasket_uid
+        ,payment.payment_type            AS payment.payment_type
+//         ,payment.amount_given            AS payment.amount_given
+
+// 		,If(Match(paymentauth.license_plate_number, 'WERB', 'WERB-Shop'), 1) AS [is_WERB]
+//         ,If(paymentauth.license_plate_number = 'EVMA', 1)                    AS [is_EVMA]
+//         ,If(paymentauth.license_plate_number = 'EVGF', 1)                    AS [is_EVGF]
+//         ,If(paymentauth.license_plate_number = 'VERD', 1)                    AS [is_VERD]
+//         ,If(paymentauth.license_plate_number = 'VERDGASTRO', 1)              AS [is_VERDGASTRO]
+//         ,If(paymentauth.license_plate_number = 'DIEB', 1)                    AS [is_DIEB]
+        
+        ,paymentauth.uid                            AS paymentauth.uid
+//         ,paymentauth.iin                            AS paymentauth.iin
+//         ,paymentauth.additional_text                AS paymentauth.additional_text
+//         ,paymentauth.amount                         AS paymentauth.amount
+//         ,paymentauth.authorization_code             AS paymentauth.authorization_code
+        ,paymentauth.car_number                     AS paymentauth.car_number
+     // ,paymentauth.card_brand_name                AS paymentauth.card_brand_name
+     // ,paymentauth.card_expiration                AS paymentauth.card_expiration
+     // ,paymentauth.card_sequence_number           AS paymentauth.card_sequence_number
+     // ,paymentauth.card_technology                AS paymentauth.card_technology
+     // ,paymentauth.currency_code                  AS paymentauth.currency_code
+     // ,paymentauth.customer_signature_required    AS paymentauth.customer_signature_required
+     // ,paymentauth.date                           AS paymentauth.date
+     // ,paymentauth.driver_number                  AS paymentauth.driver_number
+     // ,paymentauth.fleet_id                       AS paymentauth.fleet_id
+        ,paymentauth.license_plate_number           AS paymentauth.license_plate_number
+     // ,paymentauth.maskedpan                      AS paymentauth.maskedpan
+        ,paymentauth.merchant_identification_number AS paymentauth.merchant_identification_number
+     // ,paymentauth.merchant_signature_required    AS paymentauth.merchant_signature_required
+     // ,paymentauth.mileage                        AS paymentauth.mileage
+     // ,paymentauth.original_trace_number          AS paymentauth.original_trace_number
+     // ,paymentauth.print_data_customer            AS paymentauth.print_data_customer
+     // ,paymentauth.print_data_merchant            AS paymentauth.print_data_merchant
+     // ,paymentauth.receipt_number                 AS paymentauth.receipt_number
+     // ,paymentauth.request_type                   AS paymentauth.request_type
+     // ,paymentauth.restriction_codes              AS paymentauth.restriction_codes
+     // ,paymentauth.result_code                    AS paymentauth.result_code
+     // ,paymentauth.result_code_host               AS paymentauth.result_code_host
+     // ,paymentauth.result_message                 AS paymentauth.result_message
+     // ,paymentauth.tank_code                      AS paymentauth.tank_code
+     // ,paymentauth.terminal_id                    AS paymentauth.terminal_id
+     // ,paymentauth.trace_number                   AS paymentauth.trace_number
+     // ,paymentauth.turnover_number                AS paymentauth.turnover_number
+     // ,paymentauth.posbasket_payment_uid          AS paymentauth.posbasket_payment_uid
+     // ,paymentauth.pan                            AS paymentauth.pan
+     // ,paymentauth.offline                        AS paymentauth.offline
+        ,paymentauth.terminal_type                  AS paymentauth.terminal_type
+     // ,paymentauth.communicator                   AS paymentauth.communicator
+        
+    FROM 
+        [$(vQVDLoadFolder)/posbasket_payment+authorization_$(vYear)-??.qvd] (qvd)
+    WHERE
+        payment.valid = 'True'
+        AND Exists(%basketId, 'ML|' & payment.posbasket_uid );
+
+NEXT vYear;
+
+
+// Create flags in the posbasket_item table for is_WERB, is_VERD, is_DIEB ...
+
+LET vInfo = NoOfRows('posbasket_item') & ' rows / ' & NoOfFields('posbasket_item') & ' cols';
+TRACE Before joining payment_auth into posbasket_item ...;
+TRACE posbasket_item: $(vInfo);
+ 
+LEFT JOIN (posbasket_item)
+LOAD
+    // JOIN ON
+    %basketId
+    // Add fields
+//     ,Count(%basketId) AS noOfPaymentRecs
+//     ,Concat(payment.uid, ';') AS paymentUids
+//     ,Concat(DISTINCT paymentauth.license_plate_number, ';') AS paymentauth.license_plate_numbers
+    ,If(Sum(Match(paymentauth.license_plate_number, 'WERB', 'WERB-Shop')), 1) AS [is_WERB]
+    ,If(Sum(paymentauth.license_plate_number = 'EVMA'), 1)                    AS [is_EVMA]
+    ,If(Sum(paymentauth.license_plate_number = 'EVGF'), 1)                    AS [is_EVGF]
+    ,If(Sum(Match(paymentauth.license_plate_number, 'EVMA', 'EVGF')), 1)      AS [is_EV]
+//     ,If(Sum(paymentauth.license_plate_number = 'VERD'), 1)                    AS [is_VERD]
+//     ,If(Sum(paymentauth.license_plate_number = 'VERDGASTRO'), 1)              AS [is_VERDGASTRO]
+    ,If(Sum(Match(paymentauth.license_plate_number, 'VERD', 'VERDGASTRO')), 1) AS [is_VERD]
+    ,If(Sum(paymentauth.license_plate_number = 'DIEB'), 1)                     AS [is_DIEB]    
+RESIDENT
+	payment_auth
+WHERE
+    WildMatch(paymentauth.license_plate_number, 'WERB', 'WERB-Shop', 'EVMA', 'EVGF', 'VERD', 'VERDGASTRO', 'DIEB')
+GROUP BY 
+    %basketId
+;
+    
+LET vInfo = NoOfRows('posbasket_item') & ' rows / ' & NoOfFields('posbasket_item') & ' cols';
+TRACE After joining payment_auth into posbasket_item ...;
+TRACE posbasket_item: $(vInfo);

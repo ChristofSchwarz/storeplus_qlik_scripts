@@ -1,0 +1,119 @@
+LET vFromQVD = '$(vQVDLoadFolder)/T_Products.qvd';
+//CALL traceQvdRows(vFromQVD);
+
+
+// load a list of word-parts to be removed from article names. They are
+// maintained in the settings extension ""
+
+LIB CONNECT TO 'QRS-API GET';
+
+ProdName_Replace:
+MAPPING
+LOAD @Value AS Search, '' AS Replace;
+SQL SELECT 
+	"__KEY_root",
+	(SELECT 
+		"@Value",
+		"__FK_wortfragmente"
+	FROM "wortfragmente" FK "__FK_wortfragmente" ArrayValueAlias "@Value")
+FROM JSON (wrap on) "root" PK "__KEY_root"
+WITH CONNECTION (
+	URL "https://localhost/headervp/extensions/settings/FixProductName.json",
+    HTTPHEADER "runas" "qlik.script"
+);
+
+// Lets build a list of product IDs used since 2019
+// This list is independent from the Custom Property "Daten_Jahr" which drives the amount of
+// posbasket_items to be loaded, but this is essential so that automatically build "product-families"
+// (based on EAN or supplier catalog number) will not change over time.
+
+//FOR EACH vFile IN FileList('$(vQVDLoadFolder)/posbasket+item_*.qvd')
+FOR EACH vFile IN FileList('$(vQVDLoadFolder)/item_*.qvd')
+
+    //IF vFile >= '$(vQVDLoadFolder)/posbasket+item_2021' THEN 
+    IF vFile >= '$(vQVDLoadFolder)/item_2019' THEN 
+        TRACE (Yes) Products found in $(vFile) will be processed;
+        products_in_recent_history_tmp:
+        LOAD DISTINCT 
+            posbasket._StationIdentity 
+            ,item.REF_Product
+        FROM [$(vFile)] (qvd);
+    ELSE
+        TRACE (No) Products found in $(vFile) will NOT be processed;
+    END IF
+NEXT vFile
+
+products_in_recent_history:
+LOAD 
+    'KST|' & posbasket._StationIdentity & '|' & item.REF_Product AS young_%productId
+RESIDENT products_in_recent_history_tmp;
+DROP TABLE products_in_recent_history_tmp;
+
+LET vRecentProducts = NoOfRows('products_in_recent_history');
+
+// ------------------------------------------------------------------------------
+
+product:
+LOAD
+	'KST|' & _StationIdentity & '|' & rowGuid            AS %productId  
+	,'KST|' & rowGuid                                    AS %prodMappingId // mappings for KST products are done on the rowGuid without the _StationIdentity in the key
+	,'KST|' /*& _StationIdentity & '|' */ & REF_ProductGroup  AS %prodGrpId
+    ,'KST'                                               AS product.source
+//     ,_StationIdentity           AS product._StationIdentity
+    ,REF_TypeProduct                                     AS product.REF_TypeProduct
+    ,REF_ProductGroup                                    AS product.REF_ProductGroup
+    ,Fabs(REF_ProductGroup LIKE 'FS-FUEL-*') AS product.isFuel  // new 21.06.2021 ... get isFuel flag from product group code itself
+    
+    ,C_StrPrimaryCode           AS product.PrimaryCode
+    ,If(Len(C_StrPrimaryCode) >= 2, C_StrPrimaryCode) AS product.all_eans
+    ,if(Len(C_StrSupplierLookup) AND MixMatch(C_StrCatalog, 'LEKKERLAND') AND Len(Num(Num#(C_StrSupplierLookup))) >= 3, 
+         Upper(C_StrCatalog) & ': ' & Num(Num#(C_StrSupplierLookup)))
+                                AS product.all_extern_orderNs                      
+//     ,C_StrPrimaryLookup         AS product.PrimaryLookup
+//     ,C_StrSupplierLookup        AS product.SupplierLookup
+    ,Trim(MapSubString('ProdName_Replace', 
+        Upper(C_StrName)))      AS product.name
+//     ,C_StrGroupExt              AS product.GroupExt
+//     ,C_StrComment1              AS product.Comment1
+//     ,C_StrComment2              AS product.Comment2
+//     ,C_StrComment3              AS product.Comment3
+//     ,C_StrDisplay               AS product.Display
+//     ,C_StrPackageText           AS product.PackageText
+//     ,C_NumEntityLot             AS product.EntityLot
+//     ,REF_TypeEntity             AS product.REF_TypeEntity
+//     ,C_BoolIsCompound           AS product.IsCompound
+//     ,C_BoolIsInventory          AS product.IsInventory
+//     ,C_BoolIsSales              AS product.IsSales
+//     ,C_BoolIsSalesDivisabel     AS product.IsSalesDivisabel
+//     ,C_BoolIsKeepSeparated      AS product.IsKeepSeparated
+//     ,C_BoolIsLocalizable        AS product.IsLocalizable
+//     ,C_BoolIsCatalog            AS product.IsCatalog
+    ,C_StrCatalog               AS product.Catalog
+//     ,C_StrFlag                  AS product.Flag
+//    ,C_BoolIsUsed               AS product.IsUsed
+//     ,C_DtPrintLast              AS product.PrintLast
+//     ,C_DtModifiedLast           AS product.ModifiedLast
+//     ,REF_DataQuality            AS product.REF_DataQuality
+//     ,isProtected                AS product.isProtected
+//     ,isDischarged               AS product.isDischarged
+//     ,rowLogin                   AS product.rowLogin
+//     ,rowUpdate                  AS product.rowUpdate
+     ,'KST|' & rowGuid          AS product.uid
+//     ,rowVersion                 AS product.rowVersion
+//     ,C_StrTextDisplay           AS product.TextDisplay
+//     ,C_StrTextCustomer          AS product.TextCustomer
+//     ,C_StrTextPrint             AS product.TextPrint
+//     ,C_BoolIsPrdCounted         AS product.IsPrdCounted
+    ,C_IntPrdCount              AS product.PrdCount
+    
+FROM 
+	[$(vFromQVD)] (qvd)
+WHERE
+	Exists(young_%productId, 'KST|' & _StationIdentity & '|' & rowGuid)  // only products are loaded which are used in recent years
+    AND NOT (REF_ProductGroup LIKE 'SPAR_*');  // SPAR... product group is not needed for further analysis
+
+
+STORE product INTO [$(vQVDSaveToFolder)/product.qvd] (qvd);
+CALL GetQvdFieldNames('product', vQVDSaveToFolder);
+
+

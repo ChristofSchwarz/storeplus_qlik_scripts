@@ -1,0 +1,80 @@
+// Script Page changes 
+// 10-Jan-2022, Christof Schwarz, Added 2022 to variable vYears
+
+SET ThousandSep=' ';
+SET DecimalSep=',';
+SET MoneyThousandSep='.';
+SET MoneyDecimalSep=',';
+SET MoneyFormat='€ #.##0,00;-€ #.##0,00';
+SET TimeFormat='hh:mm:ss';
+SET DateFormat='DD.MM.YYYY';
+SET TimestampFormat='DD.MM.YYYY hh:mm:ss[.fff]';
+SET FirstWeekDay=0;
+SET BrokenWeeks=0;
+SET ReferenceDay=4;
+SET FirstMonthOfYear=1;
+SET CollationLocale='de-AT';
+SET CreateSearchIndexOnReload=0;
+SET MonthNames='Jän.;Feb.;März;Apr.;Mai;Juni;Juli;Aug.;Sep.;Okt.;Nov.;Dez.';
+SET LongMonthNames='Jänner;Februar;März;April;Mai;Juni;Juli;August;September;Oktober;November;Dezember';
+SET DayNames='Mo.;Di.;Mi.;Do.;Fr.;Sa.;So.';
+SET LongDayNames='Montag;Dienstag;Mittwoch;Donnerstag;Freitag;Samstag;Sonntag';
+SET NumericalAbbreviation='3:k;6:M;9:G;12:T;15:P;18:E;21:Z;24:Y;-3:m;-6:μ;-9:n;-12:p;-15:f;-18:a;-21:z;-24:y';
+
+reload: 
+LOAD Now() AS StartReloadAt AUTOGENERATE(1);
+
+// SET HidePrefix = '%';
+// SET vFirst = 'FIRST 1000';
+// SET vFirst = '';  // load all records
+
+SET vBerechtigungenExcel = [lib://Office_365_Sharepoint/Freigegebene Dokumente/Qlik Files/ROHDATEN FÜR SICHTUNG/MAPPINGS/UserTankstellen+SheetsMapping.xlsx];
+SET vMappingsRootFolder =  [lib://StaticContent (stiglechner_qlikdev)/Extensions];
+IF vScriptFolder = 'preview' THEN
+    LET vQVDLoadFolder =       'lib://D-QVD-test/Schnepf/1.Extract';
+    LET vQVDSaveToFolder =     'lib://D-QVD-test/Schnepf/2.Transform';
+    SET vBackupFolder =        [lib://D-QVD-test/Mappings/Backup];
+ELSE
+    LET vQVDLoadFolder =       'lib://D-QVD-prod/Schnepf/1.Extract';
+    LET vQVDSaveToFolder =     'lib://D-QVD-prod/Schnepf/2.Transform';
+    SET vBackupFolder =        [lib://D-QVD-prod/Mappings/Backup];
+ENDIF
+
+
+SET vOverwriteMappings = 0;  // 1 heißt, die älteren von doppelten Zeilen in Mappings werden gelöscht
+
+// $(must_include=[lib://include-script-library/get-custom-prop.css]);
+// CALL getCustomProp ('QRS-API GET', 'Daten_Jahr', '', 1, 1);
+// LET vYears = CHR(39) & Replace(Daten_Jahr, '|', CHR(39) & ',' & CHR(39)) & CHR(39);
+// TRACE Transform data for years $(vYears);
+
+//SET vYears = ['2022', '2021', '2020'];
+
+LET vYears = '';
+FOR vYear = Year(Today()) TO 2020 STEP -1;
+  LET vYears = vYears & If(Len(vYears), ',') & CHR(39) & vYear & CHR(39);
+NEXT vYear
+TRACE vYears: $(vYears);
+
+$(must_include=[lib://include-script-library/get-qvd-fields.css]);
+$(must_include=[lib://include-script-library/PreloadMappingTables.css]);
+// lädt alle *.css Mapping tabellen in den Speicher
+
+// Nach dem Motto "dont repeat yourself" gibt es bestimmte Feldformeln untenstehend, die
+// an mehreren Stellen im Script verwendet werden ...
+
+// Eine ProduktGruppe aus PDF enthält am Ende ein [Kürzel] in eckiger Klammer zB
+// "Weine offen [WO]" --> hier wird nur "WO" extrahiert.
+// Wenn das Kürzel fehlt, wird die Gruppe gesamt genommen
+// "77" --> "77"
+SET vMelzerProdGrp_Syntax = If(item.melzer_product_group LIKE '*[*]'
+            , TextBetween(item.melzer_product_group, '[', ']')
+            , item.melzer_product_group);
+
+// ProduktID bei Melzer wird aus Site + Gruppe + ProdNr zusammengesetzt (mit '_' dazwischen)
+
+SET vMelzerProductID_Syntax = 
+	invoice.site_number
+        & '_' &  $(vMelzerProdGrp_Syntax) 
+        & '_' &  item.product_number;   
+        

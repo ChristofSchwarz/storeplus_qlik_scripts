@@ -1,0 +1,26 @@
+product:
+LOAD
+	*
+    ,0                                                             AS product.isFuel
+    ,'Schnepf'                                                     AS product.source
+    ,'SK|' & product.uid                                           AS %productId
+    ,'SK|' & SubField(product.uid, '_', -1)                        AS %prodMappingId  
+    // in Monalisa the %prodMappingId and %productId are the same, in KST and Melzer not 
+;
+LOAD
+//     Lower(Left(KeepChar(Repeat(Hash256(item.product_description)&'-',10)   
+//     	,'0123456789ABCDEFGHIJKLMOPQRSTUVWXYZ-'), 36))             AS product.uid
+	$(vMelzerProductID_Syntax)                                     AS product.uid
+	,Concat(DISTINCT item.product_description, '|')                AS product.name
+    //,Concat(DISTINCT item.product_number, ',')                     AS product.melzer_product_id
+    ,'SK|' & Only($(vMelzerProdGrp_Syntax))                        AS %prodGrpId
+FROM 
+	[$(vQVDLoadFolder)/schnepf_invoice+item.qvd] (qvd)
+GROUP BY
+    invoice.site_number
+    ,item.melzer_product_group
+    ,item.product_number
+;
+
+
+// STORE von product als QVD ist in script 2M50

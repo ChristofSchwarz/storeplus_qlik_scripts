@@ -1,0 +1,79 @@
+/*
+
+
+*/
+
+
+[schnepf_invoice+item]:
+SELECT 
+// fields from [melzer_invoice]:
+
+	inv.uid                           AS "invoice.uid"
+    ,inv.site_number                  AS "invoice.site_number"
+// 	,inv.creation_date                AS "invoice.creation_date"         
+//     ,inv.creation_user                AS "invoice.creation_user"         
+ 	,inv.modification_date            AS "invoice.modification_date"             
+// 	,inv.modification_user            AS "invoice.modification_user"             
+	,inv.valid                        AS "invoice.valid" 
+// 	,inv.s2g_version                  AS "invoice.s2g_version"        
+	,inv.posted_date                  AS "invoice.posted_date"       
+	,inv.invoice_number               AS "invoice.invoice_number"          
+	,inv.invoice_type                 AS "invoice.invoice_type"        
+	,inv.service                      AS "invoice.service"   
+	,inv.table_number                 AS "invoice.table_number"        
+	,inv.gross_amount                 AS "invoice.gross_amount"             
+	,inv.service_station              AS "invoice.service_station"            
+	,inv.customer_short_info          AS "invoice.customer_short_info"               
+	,inv.customer_number              AS "invoice.customer_number"           
+	,inv.customer_address_form        AS "invoice.customer_address_form"                 
+	,inv.customer_name                AS "invoice.customer_name"         
+	,inv.customer_name2               AS "invoice.customer_name2"          
+	,inv.customer_address             AS "invoice.customer_address"            
+	,inv.customer_country_code        AS "invoice.customer_country_code"                 
+	,inv.customer_location_post_code  AS "invoice.customer_location_post_code"                       
+
+
+// fields from [melzer_invoice_item]:
+
+	,itm.uid                                 AS "item.uid"
+// 	,itm.creation_date                       AS "item.creation_date"      
+// 	,itm.creation_user                       AS "item.creation_user"      
+// 	,itm.modification_date                   AS "item.modification_date"          
+// 	,itm.modification_user                   AS "item.modification_user"          
+// 	,itm.valid                               AS "item.valid"
+// 	,itm.s2g_version                         AS "item.s2g_version"    
+	// ,itm.melzer_invoice_uid                  AS "item.melzer_invoice_uid"           
+	,itm.product_number                      AS "item.product_number"       
+	,itm.product_description                 AS "item.product_description"            
+	,itm.melzer_product_group				 AS "item.melzer_product_group"             
+	,itm.melzer_product_group_account        AS "item.melzer_product_group_account"                     
+	,itm.melzer_product_group_account_contra AS "item.melzer_product_group_account_contra"                          
+	,itm.amount                              AS "item.amount"
+	,itm.tax_precentage                      AS "item.tax_precentage"       
+	,itm.tax_amount                          AS "item.tax_amount"   
+	,itm.net_price                           AS "item.net_price"  
+	,itm.unit_price                          AS "item.unit_price"  
+	,itm.gross_price                         AS "item.gross_price"    
+	,itm.service                             AS "item.service"
+
+// fields from schnepf_invoice_payment
+    ,pay.payment_type                        AS "invoice.payment_type"
+    
+FROM 
+	"mona"."melzer_invoice" AS inv
+
+LEFT OUTER JOIN 
+	"mona"."melzer_invoice_item" AS itm
+ON
+	itm.melzer_invoice_uid = inv.uid
+
+LEFT OUTER JOIN 
+	"mona"."melzer_invoice_payment" AS pay
+ON
+	pay.melzer_invoice_uid = inv.uid
+
+WHERE
+    inv.valid
+;
+
+// STORE wird erst in script 1S60 durchgeführt, nachdem noch mehr Daten zu melzer_invoice+item hinzugefügt wurden.

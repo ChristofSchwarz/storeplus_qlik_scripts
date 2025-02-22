@@ -1,0 +1,14 @@
+planogram_link:
+LEFT KEEP (posbasket_item)
+LOAD
+    %monalisaProductId,
+    %proposalId,
+    %locationId,   
+    %calLink,
+    proposal_product.valid_from,
+    proposal_product.valid_to,
+    proposal_product.on_sale,
+    proposal_product.planogram AS planogram
+FROM 
+	[$(vQvdPath_Monalisa)/planogram_link2.qvd] (qvd);
+

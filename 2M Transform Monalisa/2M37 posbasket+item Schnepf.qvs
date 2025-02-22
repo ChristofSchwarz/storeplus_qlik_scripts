@@ -1,0 +1,138 @@
+FOR EACH vYear IN $(vYears)
+    TRACE Loading Schnepf Kassa invoice data for year $(vYear) ...;
+
+    // Neu Dec 2023 Schnepf-Kassendaten hinzufügen
+    LET vRowsBefore = NoOfRows('posbasket_item'); 
+ /*
+
+Diese Invoice-Types gibt es:
+MEETING (1) Besprechung
+STAFF (2) Personalverbrauch
+PERSONAL (3) Eigenverbrauch
+KITCHEN (4) Küchenfassung
+ALL_INCLUSIVE (5) All inclusive
+BREAKAGE (6) Bruch
+SPOILAGE (7) Verdorbene Waren
+LOSS (8) Schwund
+DELIVERY_NOTE (L) Lieferschein
+COLLECTIVE_INVOICE (S) Sammelrechnung
+
+ */
+
+    CONCATENATE (posbasket_item)
+    LOAD
+        'Schnepf'                                AS Source
+        //,'SK|' & invoice.service_station         AS %locationId
+        ,'SK|' & invoice.site_number             AS %locationId
+        ,'SK|' & invoice.uid                     AS %basketId
+        ,Floor(invoice.posted_date)              AS %calLink  
+        ,Hour(invoice.posted_date)               AS posbasket.stunde
+        ,100                                     AS posbasket.REF_Type  // Kompatibilität mit KST daten, die REF_Type haben
+    
+        ,invoice.uid                             AS posbasket.uid     
+        ,Timestamp(Floor(invoice.posted_date, 1/24/3600), 'YYYY-MM-DD hh:mm:ss') AS 	posbasket.posted_date  // auf Sekunde genau
+        // ,invoice.creation_date                AS posbasket.creation_date       
+        // ,invoice.creation_user                AS posbasket.creation_user      
+        // ,invoice.modification_date            AS posbasket.modification_date          
+        // ,invoice.modification_user            AS posbasket.modification_user         
+        // ,invoice.valid                        AS posbasket.valid
+        // ,invoice.s2g_version                  AS posbasket.s2g_version        
+        ,invoice.invoice_number                  AS posbasket.id        
+        // ,Coalesce(invoice.invoice_type, '')      AS posbasket.type         // Christof auskommentiert 06.08.2024
+        // type feld wird aus Payment_Type und Invoice_type befüllt
+        ,Trim(invoice.payment_type & ' ' & invoice.invoice_type)      AS posbasket.type      // Christof hinzugefügt 06.08.2024
+        // ,invoice.service                      AS posbasket.service   
+        // ,invoice.table_number                 AS posbasket.table_number        
+        // ,invoice.gross_amount                 AS posbasket.gross_amount        
+        // ,invoice.site_number                  AS posbasket.site_number       
+        // ,invoice.service_station              AS posbasket.service_station            
+        // ,invoice.customer_short_info          AS posbasket.customer_short_info               
+        // ,invoice.customer_number              AS posbasket.customer_number           
+        // ,invoice.customer_address_form        AS posbasket.customer_address_form                 
+        // ,invoice.customer_name                AS posbasket.customer_name         
+        // ,invoice.customer_name2               AS posbasket.customer_name2          
+        // ,invoice.customer_address             AS posbasket.customer_address            
+        // ,invoice.customer_country_code        AS posbasket.customer_country_code                 
+        // ,invoice.customer_location_post_code  AS posbasket.customer_location_post_code   
+
+
+        ,RowNo()                                 AS item.uniqueAutoId
+        ,0                                       AS item.isFuel
+        ,'SK|' & Lower(Left(KeepChar(Repeat(Hash256(item.product_description)&'-',10)   
+    	,'0123456789ABCDEFGHIJKLMOPQRSTUVWXYZ-'), 36))             AS %productId
+        // ,item.uid                             AS item.uid         
+        // ,item.melzer_invoice_uid              AS item.melzer_invoice_uid           
+        ,item.product_number                      AS item.product_id       
+        ,item.product_description                 AS item.product_name            
+        ,item.melzer_product_group                AS item.melzer_product_group             
+        // ,item.melzer_product_group_account        AS item.melzer_product_group_account                     
+        // ,item.melzer_product_group_account_contra AS item.melzer_product_group_account_contra                          
+        ,item.amount                              AS item.quantity
+        // ,item.tax_precentage                      AS item.tax_precentage       
+        // ,item.tax_amount                          AS item.tax_amount   
+        ,item.net_price                           AS item.amount_net  
+        // ,item.unit_price                          AS item.unit_price  
+        ,item.gross_price                         AS item.amount_gross    
+        ,'service ' & item.service                AS item.additional_text        
+
+        ,Fabs(is_WERB_Schnepf)                    AS is_WERB
+        ,Fabs(is_EVMA_Schnepf)                    AS is_EVMA
+        ,Fabs(is_EV_Schnepf)                      AS is_EV
+        ,Fabs(is_VERD_Schnepf)                    AS is_VERD
+        ,Fabs(is_DIEB_Schnepf)                    AS is_DIEB
+    FROM 
+        [$(vQVDLoadFolder)/schnepf_invoice+item.qvd] (qvd)
+    WHERE 
+        invoice.valid = 'True'
+        AND Year(invoice.posted_date) = $(vYear)
+        AND (
+            // NOT Match(Coalesce(item.melzer_product_group, ''), '70', '') 
+            NOT WildMatch(Coalesce(item.melzer_product_group, ''), '*_70', '')  // updated line 18-Feb-2025
+            OR (item.net_price <> 0)  // unnötige Zeilen ohne Preis aus Gruppe 70 ignorieren
+        )
+        AND Exists(%locationId, 'SK|' & invoice.site_number) // Zeilen einer site, die schon bei den locations ausgeklammert wurde, wollen wir nicht importieren
+    ;
+        
+    LET vRowsBefore = NoOfRows('posbasket_item') - vRowsBefore;     
+    TRACE hinzugefügt: $(vRowsBefore) Zeilen;
+            
+NEXT vYear;
+
+
+// faster way to generate list of distinct %productId is via the Symboltable
+
+usedProducts:    
+LOAD
+    FieldValue('%productId',RecNo()) AS %productId
+    ,1 AS usedProduct
+AUTOGENERATE 
+    FieldValueCount('%productId');
+
+STORE usedProducts INTO [$(vQVDSaveToFolder)/usedProducts.qvd] (qvd);
+CALL GetQvdFieldNames('usedProducts', vQVDSaveToFolder);
+
+
+// New 20.01.2022: 
+usedProducts2:
+LOAD 
+	%productId
+    ,Min(posbasket.posted_date) AS postedDate_Min
+    ,Max(posbasket.posted_date) AS postedDate_Max
+    ,Sum(if(Year(posbasket.posted_date)=2020, item.price_net)) AS Sum_2020
+    ,Sum(if(Year(posbasket.posted_date)=2021, item.price_net)) AS Sum_2021
+    ,Sum(if(Year(posbasket.posted_date)=2022, item.price_net)) AS Sum_2022
+    ,Sum(if(Year(posbasket.posted_date)=2023, item.price_net)) AS Sum_2023
+    ,Sum(if(Year(posbasket.posted_date)=2024, item.price_net)) AS Sum_2024
+    ,Sum(if(Year(posbasket.posted_date)=2025, item.price_net)) AS Sum_2025
+    ,Sum(if(Year(posbasket.posted_date)=2026, item.price_net)) AS Sum_2026
+    ,Sum(if(Year(posbasket.posted_date)=2027, item.price_net)) AS Sum_2027
+    ,Sum(if(Year(posbasket.posted_date)=2028, item.price_net)) AS Sum_2028
+    ,Sum(if(Year(posbasket.posted_date)=2029, item.price_net)) AS Sum_2029
+    ,Sum(if(Year(posbasket.posted_date)=2030, item.price_net)) AS Sum_2030
+RESIDENT
+	posbasket_item
+GROUP BY
+    %productId;
+    
+STORE usedProducts2 INTO [$(vQVDSaveToFolder)/usedProducts2.qvd] (qvd);
+CALL GetQvdFieldNames('usedProducts2', vQVDSaveToFolder);

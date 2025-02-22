@@ -1,0 +1,52 @@
+SET ThousandSep=' ';
+SET DecimalSep=',';
+SET MoneyThousandSep='.';
+SET MoneyDecimalSep=',';
+SET MoneyFormat='€ #.##0,00;-€ #.##0,00';
+SET TimeFormat='hh:mm:ss';
+SET DateFormat='DD.MM.YYYY';
+SET TimestampFormat='DD.MM.YYYY hh:mm:ss[.fff]';
+SET FirstWeekDay=0;
+SET BrokenWeeks=0;
+SET ReferenceDay=4;
+SET FirstMonthOfYear=1;
+SET CollationLocale='de-AT';
+SET CreateSearchIndexOnReload=1;  // <-- set to 0 during development
+SET MonthNames='Jän;Feb;Mär;Apr;Mai;Jun;Jul;Aug;Sep;Okt;Nov;Dez';
+SET LongMonthNames='Jänner;Februar;März;April;Mai;Juni;Juli;August;September;Oktober;November;Dezember';
+SET DayNames='Mo.;Di.;Mi.;Do.;Fr.;Sa.;So.';
+SET LongDayNames='Montag;Dienstag;Mittwoch;Donnerstag;Freitag;Samstag;Sonntag';
+SET NumericalAbbreviation='3:k;6:M;9:G;12:T;15:P;18:E;21:Z;24:Y;-3:m;-6:μ;-9:n;-12:p;-15:f;-18:a;-21:z;-24:y';
+
+SEARCH INCLUDE '*';
+SEARCH EXCLUDE '%*', '*uid', '*REF_*', '*_date', '*.id', '*.ID', '*PrintAdditional', 'item.*';
+
+SET vNum0 = '#.##0', ',', '.';
+
+LET vRealDrillBy = 'S';  // Realverkauf Report nach Station als Default
+
+LET vColorMonalisa = Num#('F25C05', '(hex)') + 4278190080;
+LET vColorManually = LightBlue();
+LET vToggle1 = 'Produktgruppe';
+SET vToggle2 = ['€','L'];
+
+// SET vBerechtigungenExcel = [lib://GDrive_files/1O302SL7doxzRB9nDEoEWxSDru9HSfvZO/UserTankstellen+SheetsMapping.xlsx];
+SET vBerechtigungenExcel = [lib://Office_365_Sharepoint/Freigegebene Dokumente/Qlik Files/ROHDATEN FÜR SICHTUNG/MAPPINGS/UserTankstellen+SheetsMapping.xlsx];
+IF vScriptFolder = 'preview' THEN
+    SET vQvdPath_Combined = [lib://D-QVD-test/Combined];
+    SET vQvdPath_Monalisa = [lib://D-QVD-test/Monalisa/2.Transform];
+ELSE
+    SET vQvdPath_Combined = [lib://D-QVD-prod/Combined];
+    SET vQvdPath_Monalisa = [lib://D-QVD-prod/Monalisa/2.Transform];
+ENDIF
+
+LET vQRS_URL_Users = 'https://srqsysti001.stiglechner.co.at/headervp/qrs/user/full';
+LET vQRS_vproxy = 'headervp';
+LET vQRS_hdrkey = 'runas';
+LET vQRS_user = 'qlik.script';
+
+// $(must_include=[lib://include-script-library/get-custom-prop.css]);
+CALL getCustomProp ('QRS-API GET', 'Daten_Jahr', '', 1, 1);
+
+
+TRACE Loading data for years $(Daten_Jahr);
