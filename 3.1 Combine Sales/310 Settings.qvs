@@ -27,10 +27,12 @@ SET vBerechtigungenExcel = [lib://Office_365_Sharepoint/Freigegebene Dokumente/Q
 IF vScriptFolder = 'preview' THEN
     SET vQvdPath_Transf_Monalisa = [lib://D-QVD-test/Monalisa/2.Transform];
     SET vQvdPath_Transf_KST      = [lib://D-QVD-test/KST/2.Transform];
+    SET vQvdPath_Transf_Schnepf  = [lib://D-QVD-test/Schnepf/2.Transform];
     SET vQvdPath_Store           = [lib://D-QVD-test/Combined];
 ELSE
     SET vQvdPath_Transf_Monalisa = [lib://D-QVD-prod/Monalisa/2.Transform];
     SET vQvdPath_Transf_KST      = [lib://D-QVD-prod/KST/2.Transform];
+    SET vQvdPath_Transf_Schnepf  = [lib://D-QVD-prod/Schnepf/2.Transform];
     SET vQvdPath_Store           = [lib://D-QVD-prod/Combined];
 ENDIF
 

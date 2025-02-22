@@ -90,6 +90,8 @@ WHERE
 ;
         
 
+STORE posbasket_item INTO [$(vQVDSaveToFolder)/posbasket+item.qvd] (qvd);
+CALL GetQvdFieldNames('posbasket+item', vQVDSaveToFolder);
 
 // faster way to generate list of distinct %productId is via the Symboltable
 

@@ -23,4 +23,5 @@ GROUP BY
 ;
 
 
-// STORE von product als QVD ist in script 2M50
+STORE product INTO [$(vQVDSaveToFolder)/product.qvd] (qvd);
+CALL GetQvdFieldNames('product', vQVDSaveToFolder);
