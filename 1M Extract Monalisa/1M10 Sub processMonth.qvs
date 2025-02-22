@@ -1,0 +1,178 @@
+SUB processMonth(param_YearMonth)
+
+	SET vQVDFile = [$(vQVDSaveToFolder)/posbasket+item_$(param_YearMonth).qvd];
+	SET vQVDFile2 = [$(vQVDSaveToFolder)/posbasket_payment+authorization_$(param_YearMonth).qvd];   
+    
+    
+        posbasket_item:
+        SELECT 
+
+            p.uid                                  AS "posbasket.uid" //
+        //  ,p.creation_date                       AS "posbasket.creation_date"
+            ,p.posted_date                         AS "posbasket.posted_date" //
+            ,p.modification_date                   AS "posbasket.modification_date" //
+        //  ,p.amount_given                        AS "posbasket.amount_given"
+        //  ,p.amount_gross_total                  AS "posbasket.amount_gross_total"
+        //  ,p.cashier                             AS "posbasket.cashier"
+            ,p.id                                  AS "posbasket.id"
+        //  ,p.linked_basket                       AS "posbasket.linked_basket"
+            ,p.location_id                         AS "posbasket.location_id"
+        //  ,p.pos_id                              AS "posbasket.pos_id"
+
+            ,p.status                              AS "posbasket.status"
+            ,p.type                                AS "posbasket.type"
+            ,p.station_uid                         AS "posbasket.station_uid"
+        //  ,p.rksv_signature                      AS "posbasket.rksv_signature"
+        //  ,p.rksv_state                          AS "posbasket.rksv_state"
+        //  ,p.amount_gross_total_without_discount AS "posbasket.amount_gross_total_without_discount"
+        //  ,p.is_bkmr                             AS "posbasket.is_bkmr"
+        //  ,p.is_open_account                     AS "posbasket.is_open_account"
+        //  ,p.is_open_account_payed               AS "posbasket.is_open_account_payed"
+        //  ,p.receipt_number                      AS "posbasket.receipt_number"
+            ,p.valid                               AS "posbasket.valid" //
+
+        // fields from "item" table
+
+            ,i.uid                           AS "item.uid"
+        //  ,i.creation_date                 AS "item.creation_date"
+        //  ,i.modification_date             AS "item.modification_date"
+            ,i.additional_text               AS "item.additional_text"
+            ,i.amount_gross                  AS "item.amount_gross"
+            ,i.amount_net                    AS "item.amount_net"
+            ,i.cashier                       AS "item.cashier"
+            ,i.currency                      AS "item.currency"
+            ,i.pos_id                        AS "item.pos_id"
+            ,i.price_gross                   AS "item.price_gross"
+            ,i.price_net                     AS "item.price_net"
+            ,i.pricing_rule                  AS "item.pricing_rule"
+            ,i.product_id                    AS "item.product_id"
+            ,i.product_name                  AS "item.product_name"
+            ,i.product_type                  AS "item.product_type"
+            ,i.quantity                      AS "item.quantity"
+        //  ,i.posbasket_uid                 AS "item.posbasket_uid"
+            ,i.amount_gross_without_discount AS "item.amount_gross_without_discount"
+            ,i.amount_net_without_discount   AS "item.amount_net_without_discount"
+            ,i.parent_posbasket_item_uid     AS "item.parent_posbasket_item_uid"
+            ,i.itemid                        AS "item.itemid"
+            ,i.parentitemid                  AS "item.parentitemid"
+
+        FROM 
+            "$(dbSchema)"."posbasket" AS p
+
+        LEFT OUTER JOIN      
+        /* INNER JOIN   we dont need baskets without any item, therefore INNER JOIN */
+            "$(dbSchema)"."posbasket_item" AS i
+        ON
+            i.posbasket_uid = p.uid
+        WHERE
+            p.valid
+            AND date_part('year', p.creation_date) = $(vYear)
+            AND date_part('month', p.creation_date) = $(vMonth)
+        // LIMIT 10
+        ;
+
+		
+        STORE posbasket_item INTO [$(vQVDFile)] (qvd);
+		CALL GetQvdFieldNames(SubField(vQVDFile, '/', -1), vQVDSaveToFolder);
+
+        DROP TABLE posbasket_item;
+        
+        
+        // ------- get corresponding payments segmented per year -------
+         
+        posbasket_payment:
+        SELECT
+ 
+ 		// Fields from "posbasket_payment" table
+        
+            pay.uid                                AS "payment.uid"
+        // ,pay.creation_date                      AS "payment.creation_date"
+        // ,pay.creation_user                      AS "payment.creation_user"
+        // ,pay.modification_date                  AS "payment.modification_date"
+        // ,pay.modification_user                  AS "payment.modification_user"
+           ,pay.valid                              AS "payment.valid"
+           ,pay.additional_text                    AS "payment.additional_text"
+           ,pay.amount                             AS "payment.amount"
+        // ,pay.cashier                            AS "payment.cashier"
+           ,pay.external_card_reference            AS "payment.external_card_reference"
+           ,pay.external_reference                 AS "payment.external_reference"
+           ,pay.pos_id                             AS "payment.pos_id"
+        // ,pay.reference_signature                AS "payment.reference_signature"
+           ,pay.posbasket_uid                      AS "payment.posbasket_uid"
+        // ,pay.s2g_version                        AS "payment.s2g_version"
+           ,pay.payment_type                       AS "payment.payment_type"
+        // ,pay.amount_given                       AS "payment.amount_given"
+
+       // Fields from "posbasket_payment_authorization" table
+       
+           ,au.uid                                AS "paymentauth.uid"
+        // ,au.creation_date                      AS "paymentauth.creation_date"
+        // ,au.creation_user                      AS "paymentauth.creation_user"
+        // ,au.modification_date                  AS "paymentauth.modification_date"
+        // ,au.modification_user                  AS "paymentauth.modification_user"
+        // ,au.valid                              AS "paymentauth.valid"
+        // ,au.s2g_version                        AS "paymentauth.s2g_version"
+        // ,au.iin                                AS "paymentauth.iin"
+        // ,au.additional_text                    AS "paymentauth.additional_text"
+        // ,au.amount                             AS "paymentauth.amount"
+        // ,au.authorization_code                 AS "paymentauth.authorization_code"
+           ,au.car_number                         AS "paymentauth.car_number"
+           ,au.card_brand_name                    AS "paymentauth.card_brand_name"
+        // ,au.card_expiration                    AS "paymentauth.card_expiration"
+        // ,au.card_sequence_number               AS "paymentauth.card_sequence_number"
+        // ,au.card_technology                    AS "paymentauth.card_technology"
+           ,au.currency_code                      AS "payment.currency_code"
+        // ,au.customer_signature_required        AS "paymentauth.customer_signature_required"
+        // ,au.date                               AS "paymentauth.date"
+        // ,au.driver_number                      AS "paymentauth.driver_number"
+        // ,au.fleet_id                           AS "paymentauth.fleet_id"
+           ,au.license_plate_number               AS "paymentauth.license_plate_number"
+        // ,au.maskedpan                          AS "paymentauth.maskedpan"
+           ,au.merchant_identification_number     AS "paymentauth.merchant_identification_number"
+        // ,au.merchant_signature_required        AS "paymentauth.merchant_signature_required"
+        // ,au.mileage                            AS "paymentauth.mileage"
+        // ,au.original_trace_number              AS "paymentauth.original_trace_number"
+        // ,au.print_data_customer                AS "paymentauth.print_data_customer"
+        // ,au.print_data_merchant                AS "paymentauth.print_data_merchant"
+        // ,au.receipt_number                     AS "paymentauth.receipt_number"
+        // ,au.request_type                       AS "paymentauth.request_type"
+        // ,au.restriction_codes                  AS "paymentauth.restriction_codes"
+        // ,au.result_code                        AS "paymentauth.result_code"
+        // ,au.result_code_host                   AS "paymentauth.result_code_host"
+        // ,au.result_message                     AS "paymentauth.result_message"
+        // ,au.tank_code                          AS "paymentauth.tank_code"
+        // ,au.terminal_id                        AS "paymentauth.terminal_id"
+        // ,au.trace_number                       AS "paymentauth.trace_number"
+        // ,au.turnover_number                    AS "paymentauth.turnover_number"
+        // ,au.posbasket_payment_uid              AS "paymentauth.posbasket_payment_uid"
+        // ,au.pan                                AS "paymentauth.pan"
+        // ,au.offline                            AS "paymentauth.offline"
+        // ,au.customer_signature                 AS "paymentauth.customer_signature"
+        // ,au.customer_name                      AS "paymentauth.customer_name"
+           ,au.terminal_type                      AS "paymentauth.terminal_type"
+        // ,au.communicator                       AS "paymentauth.communicator"
+        FROM
+        	"$(dbSchema)"."posbasket_payment" AS pay
+        INNER JOIN
+            "$(dbSchema)"."posbasket" AS p
+            ON 
+                pay.posbasket_uid = p.uid
+        LEFT OUTER JOIN 
+        	"$(dbSchema)"."posbasket_payment_authorization" AS au
+            ON
+                au.posbasket_payment_uid = pay.uid
+        WHERE
+        	p.valid
+            AND pay.valid
+            AND date_part('year', p.creation_date) = $(vYear)
+            AND date_part('month', p.creation_date) = $(vMonth)
+        // LIMIT 10
+        ;
+        
+         
+        STORE posbasket_payment INTO [$(vQVDFile2)] (qvd);
+		CALL GetQvdFieldNames(SubField(vQVDFile2, '/', -1), vQVDSaveToFolder);
+        
+        DROP TABLE posbasket_payment;
+          
+END SUB

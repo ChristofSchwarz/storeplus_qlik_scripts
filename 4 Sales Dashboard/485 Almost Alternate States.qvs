@@ -1,0 +1,58 @@
+TRACE [Running syncSomeSelections snippet https://bit.ly/2unjnbX];
+
+// This script allows to define a number of fields as "global" fields even when used within
+// an alternate state. With that, you've got "almost alternate states". Typically, that are
+// date fields (year, month, ...) which should act as global, whereas all other selections
+// should be private within an alternate state (which they are by default)
+
+// This script snippet will create three variables, two of which you can use within/or as a
+// set analysis. vSyncSel_altAll and vAddSyncSel
+// Usage examples:
+//     Sum ( $(vSyncSelAll_alt2) Sales)
+//     Sum ( {< field = {"value"} $(vAddSyncSel_alt2) >} Sales)
+
+// See https://www.youtube.com/watch?v=jQVzMaxABNA
+
+// To tell the script, which field(s) you want to sync into the alternate states, put 
+// a pattern match list (in single quotes, comma-separated) into variable vSyncFields_alt2 
+// before including the below lines of script, for example
+
+SET [vSyncFieldsFromState:alt]  = [ 'Tag' , 'Monat', 'Jahr' ];
+SET [vSyncFieldsFromState:alt2] = [ 'Tag' , 'Monat', 'Jahr' ];
+
+// To tell the script, which field(s) you want to sync into the alternate states, put 
+// a pattern match list (in single quotes, comma-separated) into variable vSyncFields_alt2 
+// before including the below lines of script, for example
+// SET vSyncFields_alt2 = [ 'order_date*' , 'employee_id', 'shipping_date*' ];
+
+SET vOpenSet = ['{<'&];
+SET vCloseSet = [&'>}'];
+SET vSetSep = [','&];
+SET vMarker1 = ['/*`*/'&];
+SET vMarker2 = [&'/*´*/'];
+SET vFixEmptySet = ['/*`*/{<>}/*´*/',''];
+SET vFixEmptySep = ['/*`*/,/*´*/',''];
+
+FOR EACH vState IN '$', 'alt', 'alt2'
+
+    SET [vFieldsWithSelInState:$(vState)] = [=Replace('ValueList('&CHR(39)&GetCurrentSelections('*/,'&CHR(39),CHR(39)&'/*','',1,'$(vState)')&'*/)','ValueList(''*/)','Null()')];
+
+    SET [vSyncSelFromState:$(vState)] = Concat(If(WildMatch(§(vFieldsWithSelInState:$(vState)), §(vSyncFieldsFromState:$(vState)))
+        ,'[' & §(vFieldsWithSelInState:$(vState)) & '] =P({[$(vState)]}[' & §(vFieldsWithSelInState:$(vState)) & '])' ), ' , ');
+    LET [vSyncSelFromState:$(vState)] = Replace([vSyncSelFromState:$(vState)], '§(', '$' & '(');    
+
+    LET [vSetMod.FieldsFromState:$(vState)] = '=Replace(' & vMarker1 & vOpenSet & [vSyncSelFromState:$(vState)] & vCloseSet & vMarker2 & ', $(vFixEmptySet) )';
+    LET [vAddSetMod.FieldsFromState:$(vState)] = '=Replace(' & vMarker1 & vSetSep & [vSyncSelFromState:$(vState)] & vMarker2 & ', $(vFixEmptySep) )';
+
+NEXT vState
+// Delete all the temp variables
+LET vMarker1 = Null(); 
+LET vMarker2 = Null();
+LET vOpenSet = Null(); 
+LET vCloseSet = Null(); 
+LET vSetSep = Null();
+LET vFixEmptySet = Null();
+LET vFixEmptySep = Null();
+
+
+

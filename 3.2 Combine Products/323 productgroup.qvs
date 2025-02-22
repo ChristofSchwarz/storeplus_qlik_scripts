@@ -1,0 +1,84 @@
+CALL GetQvdFieldNames('productgroup', vQvdPath_Transf_KST);
+CALL GetQvdFieldNames('productgroup', vQvdPath_Transf_Monalisa);
+
+/*
+Die combined productgroup Tabelle wird aus zwei Quellen zusammengeführt:
+ - Monalisa so wie sie nach Transform Schritt ist (enthält auch Melzer/Schnepf Zeilen)
+ - KST wird nach der mapping Tabelle "productgroup-mapping.css" übersetzt in 
+   passende Monalisa Bezeichnungen, andernfalls wird der kstProdGrpCode mit 'zz ' 
+   vorangestellt als Pseudo-Produktgruppe aufgefüllt
+*/
+
+productgroup:
+LOAD DISTINCT
+    *
+    // Monalisa has already the Path split into productgroup.name1 .. productgroup.name4
+    ,If(%prodGrpId LIKE '*pseudo*', 
+        'Pseudo-Produktgruppe', 
+        // if (productgroup.isSchnepfXlsMapping, 'Schnepf Produktgruppen Excel',
+            'original ' & subfield(%prodGrpId, '|', 1) &' Kategorie'
+        //    ) 
+        ) AS productgroup.info
+    ,subfield(%prodGrpId, '|', 1) AS productgroup.sourceKey
+FROM 
+	[$(vQvdPath_Transf_Monalisa)/productgroup.qvd] (qvd)
+// 19.10.2022 WHERE auskommentiert, damit Produktgruppen, die früher einmal valid waren und nicht mehr sind, dennoch
+// geladen werden, sonst gibt es für älteren Umsatz keine Produktgruppen.
+// WHERE 
+// 	productgroup.valid like 'True'
+;
+
+//DROP FIELD productgroup.valid FROM productgroup;
+
+CONCATENATE (productgroup)
+LOAD DISTINCT
+    *
+    ,Subfield(productgroup.Path,'\',1)    AS productgroup.name1
+    ,If(SubstringCount(productgroup.Path,'\') >= 1, Subfield(productgroup.Path,'\',2))
+        AS productgroup.name2 
+    ,If(SubstringCount(productgroup.Path,'\') >= 2, Subfield(productgroup.Path,'\',3))
+        AS productgroup.name3 
+    ,If(SubstringCount(productgroup.Path,'\') >= 3, Subfield(productgroup.Path,'\',4))
+        AS productgroup.name4   
+    ,1 + SubstringCount(productgroup.Path,'\') AS productgroup.hier_level
+    ,Subfield(productgroup.Path, '\', -1) AS productgroup.name
+    ,subfield(%prodGrpId, '|', 1) AS productgroup.sourceKey
+;
+LOAD DISTINCT
+   %prodGrpId
+   ,productgroup.kstProdGrpCode
+//    ,productgroup.IQKT4Code
+   ,ApplyMap('ML_productgroup_from_KST', productgroup.kstProdGrpCode, 
+       Pick(WildMatch(productgroup.kstProdGrpCode, 
+       'RET*', 'GAST*', 'FS*', '*'),
+       'Shop\zz ' & productgroup.kstProdGrpCode, 
+       'Gastronomie\zz ' & productgroup.kstProdGrpCode, 
+       'Kraftstoff\zz ' & productgroup.kstProdGrpCode,
+       'zz⁯ ' & productgroup.kstProdGrpCode) 
+       ) AS productgroup.Path
+    ,If(IsNull (ApplyMap('ML_productgroup_from_KST', productgroup.kstProdGrpCode, Null())),
+    	'original KST Kategorie',
+        'productgroup-mapping.css') AS productgroup.info
+FROM 
+	[$(vQvdPath_Transf_KST)/productgroup.qvd] (qvd);
+ 
+
+
+// DROP TABLE productgroup;  // dont drop, we need it in "manufacturer" tab
+
+// Create a mapping from "Path" into %prodGrpId from all Monalisa categories
+// We will need this to manually assign some products to categories
+
+[prodGrpId->info]:
+MAPPING LOAD
+    [%prodGrpId], [productgroup.info]
+RESIDENT
+    productgroup;
+
+[path->%prodGrpId]:
+MAPPING LOAD 
+    productgroup.Path, [%prodGrpId]
+FROM 
+	[$(vQvdPath_Transf_Monalisa)/productgroup.qvd] (qvd);
+    
+    

@@ -1,0 +1,334 @@
+/*
+changes
+05-09-2022 Christof Schwarz  sm.OhneEigenv nicht mehr notwendig
+           sm.OhneEigenv ist ersetzt durch einen Button im UI, der nach productgroup.exkludiert selektiert. Kein Set-Modifier
+
+22-09-2022 Christof Schwarz  sm.AJ eingeführt, calendar Tabelle neu mit "Vorjahr" flag
+*/
+
+SET f.FieldsWithSel = CHR(39) & GetCurrentSelections('*/,'&CHR(39), CHR(39)&'/*','<v>',10,'$1') & CHR(39) & '/**/';
+LET f.AllSelOfState = 'Replace(Concat(''['' 
+& ValueList($' & '(=$(f.FieldsWithSel))) & '']*=P({$1}['' 
+& ValueList($' & '(=$(f.FieldsWithSel))) & ''])'' 
+, '','') & '','', ''[]*=P({$1}[]),'', CHR(32))';
+
+SET vColorsRAG = If(Fabs(Column($1))<1e-5, rgb(247,184,0), If(Column($1)>0,rgb(36,171,76), rgb(246,0,0)));
+LET vColorRed = rgb(246,0,0);
+LET vColorYellow = rgb(247,184,0);
+LET vColorGreen = rgb(36,171,76);
+
+// ------------------------------
+// SET MODIFIER
+// ------------------------------
+// Set modifier werden mehrfach wiederverwendet in unten folgenden KPI Definitionen
+
+//SET sm.noFuel = product.uid-={"=product.isFuel=1"};
+// SET sm.noFuel = product.isFuel-={1}; 
+// SET sm.isFuel = product.isFuel*={1};
+SET sm.noFuel = productgroup.name1-={Kraftstoff}; 
+SET sm.isFuel = productgroup.name1*={Kraftstoff};
+
+SET sm.Verderb = is_VERD*={1};
+SET sm.CalendarIgnore = Tag=,Woche=,Jahr=,Monat=,JahrMonat=,JahrWoche=;
+SET sm.AJ           = Vorjahr={"0"};  
+SET sm.VW           = Vorjahr={"VW"}; 
+SET sm.VJ           = Vorjahr={"-1"}; 
+SET sm.VVJ          = Vorjahr={"-2"}; 
+SET sm.VVVJ         = Vorjahr={"-3"}; 
+// SET sm.OhneEigenv = productgroup.name -= {"Betriebsmittel","Lotto/Toto","Vignetten*","Wertkarten*","Zutaten"};
+//  sm.OhneEigenv ist ersetzt durch einen Button im UI, der nach productgroup.exkludiert selektiert. Kein Set-Modifier
+SET sm.VJ_rolling   = Vorjahr={"(0|-1)"};
+SET sm.VVJ_rolling  = Vorjahr={"(0|-1|-2)"};
+SET sm.VVVJ_rolling = Vorjahr={"(0|-1|-2|-3)"};
+
+
+
+// ------------------------------
+// NETTO-UMSATZ
+// ------------------------------
+
+SET f.Nettoumsatz.inkl.T          = Sum({<               $(sm.AJ)                        >} item.amount_net); 
+SET f.Nettoumsatz.inkl.T_Std      = Sum({<               $(sm.AJ), posbasket.stunde={$1} >} item.amount_net); 
+SET f.Nettoumsatz.o.T             = Sum({< $(sm.noFuel), $(sm.AJ)                        >} item.amount_net); 
+SET f.Nettoumsatz.o.T_state       = Sum({$1 < $(sm.noFuel), $(sm.AJ)                     >} item.amount_net); // selection state als argument bei Aufruf
+SET f.Nettoumsatz.o.T_Std         = Sum({< $(sm.noFuel), $(sm.AJ), posbasket.stunde={$1} >} item.amount_net); // Stunde als argument bei Aufruf
+SET f.Nettoumsatz.T               = Sum({< $(sm.isFuel), $(sm.AJ)                        >} item.amount_net); 
+SET f.Nettoumsatz.T_Std           = Sum({< $(sm.isFuel), $(sm.AJ), posbasket.stunde={$1} >} item.amount_net);
+SET f.Nettoumsatz_Verderb         = Sum({< $(sm.noFuel), $(sm.AJ), $(sm.Verderb)         >} item.amount_net); 
+SET f.Nettoumsatz.o.T_StdFarbe = argb(0,0,0,0);
+// Nettoumsatz für Conny-Berichte
+SET f.Nettoumsatz.o.T_C           = Sum({< $(sm.noFuel), $(sm.AJ)                        >} item.amount_net); 
+SET f.Nettoumsatz.o.T_VJ_C        = Sum({< $(sm.noFuel), $(sm.VJ)                        >} item.amount_net); 
+SET f.Nettoumsatz.o.T_VVJ_C       = Sum({< $(sm.noFuel), $(sm.VVJ)                       >} item.amount_net); 
+SET f.Nettoumsatz.o.T_VVVJ_C      = Sum({< $(sm.noFuel), $(sm.VVVJ)                      >} item.amount_net); 
+SET f.Nettoumsatz.o.T_VJ_rolling  = Sum({< $(sm.noFuel), $(sm.VJ_rolling)                >} item.amount_net);
+SET f.Nettoumsatz.o.T_VVJ_rolling = Sum({< $(sm.noFuel), $(sm.VVJ_rolling)               >} item.amount_net);
+SET f.Nettoumsatz.o.T_VVVJ_rolling= Sum({< $(sm.noFuel), $(sm.VVVJ_rolling)              >} item.amount_net);
+SET f.Nettoumsatz.o.T.LJ          = Sum({< $(sm.noFuel), $(sm.AJ), $(sm.CalendarIgnore), Jahr={$:(=Max(Jahr))}   >} item.amount_net);
+SET f.Nettoumsatz.o.T.VJ          = Sum({< $(sm.noFuel), $(sm.AJ), $(sm.CalendarIgnore), Jahr={$:(=Max(Jahr)-1)} >} item.amount_net);
+CALL FixVariables('f.Nettoumsatz.o.T.LJ, f.Nettoumsatz.o.T.VJ');
+SET f.Top.Nettoumsatz.o.T         = Sum({< $(sm.noFuel), $(sm.AJ), Tankstelle = {'=Rank($(f.Nettoumsatz.o.T),4,1) < 4'} >} item.amount_net); 
+SET f.Top.Nettoumsatz.o.T_C       = Sum({< $(sm.noFuel), $(sm.AJ), Tankstelle = {'=Rank($(f.Nettoumsatz.o.T),4,1) < 4'} >} item.amount_net);
+SET f.Realverkauf.o.T             = Sum({< $(sm.noFuel), $(sm.AJ), is_Realverkauf *= {1}>} item.amount_net);
+
+// Umsatz Formeln in QlikView migrierten Arbeitsblättern
+SET f.QVUmsatz                    = Sum({< $(sm.noFuel), product.isFuel-={1}, $(sm.AJ)   >} item.amount_net); 
+SET f.QVUmsatz_Vgl                = Sum({< $(sm.noFuel), product.isFuel-={1}, $(sm.VJ)   >} item.amount_net);
+SET f.QVUmsatz_VJ                 = Sum({< $(sm.noFuel), product.isFuel-={1}, $(sm.VJ)   >} item.amount_net);
+SET f.QVUmsatz_VVJ                = Sum({< $(sm.noFuel), product.isFuel-={1}, $(sm.VVJ)  >} item.amount_net);
+SET f.QVUmsatz_VVVJ               = Sum({< $(sm.noFuel), product.isFuel-={1}, $(sm.VVVJ) >} item.amount_net);
+SET f.QVUmsatz_alt                = Sum({< $(sm.noFuel), product.isFuel-={1}, $(sm.AJ) $:(vAddSetMod.FieldsFromState:alt) >} item.amount_net);
+SET f.QVUmsatz_alt2               = Sum({< $(sm.noFuel), product.isFuel-={1}, $(sm.AJ) $:(vAddSetMod.FieldsFromState:alt2)>} item.amount_net);
+SET f.QVPivotUmsatz               = Sum({< $(sm.noFuel), product.isFuel-={1}, $(sm.AJ), Date={"$:(=$(vDateMax))"} >} item.amount_net); 
+SET f.QVPivotUmsatz_VW            = Sum({< $(sm.noFuel), product.isFuel-={1}, $(sm.VW), Date={"$:(=$(vDateMax))"} >} item.amount_net);    
+SET f.QVPivotUmsatz_VJ            = Sum({< $(sm.noFuel), product.isFuel-={1}, $(sm.VJ), Date={"$:(=$(vDateMax))"} >} item.amount_net); 
+
+CALL FixVariables('f.QVUmsatz_alt, f.QVUmsatz_alt2, f.QVPivotUmsatz, f.QVPivotUmsatz_VW, f.QVPivotUmsatz_VJ');
+
+// ------------------------------
+// BRUTTO-UMSATZ
+// ------------------------------
+
+SET f.Bruttoumsatz.inkl.T     = Sum({<               $(sm.AJ)                        >} item.amount_gross); 
+SET f.Bruttoumsatz.inkl.T_Std = Sum({<               $(sm.AJ), posbasket.stunde={$1} >} item.amount_gross); 
+SET f.Bruttoumsatz.o.T        = Sum({< $(sm.noFuel), $(sm.AJ)                        >} item.amount_gross); 
+SET f.Bruttoumsatz.o.T_Std    = Sum({< $(sm.noFuel), $(sm.AJ), posbasket.stunde={$1} >} item.amount_gross);
+SET f.Bruttoumsatz.T          = Sum({< $(sm.isFuel), $(sm.AJ)                        >} item.amount_gross); 
+SET f.Bruttoumsatz.T_Std      = Sum({< $(sm.isFuel), $(sm.AJ), posbasket.stunde={$1} >} item.amount_gross);
+SET f.Bruttoumsatz.o.T_StdFarbe = argb(0,0,0,0);
+
+// ------------------------------
+// FREQUENZ / #BELEGE
+// ------------------------------
+
+SET f.Frequenz.inkl.T     = Count(DISTINCT {<               $(sm.AJ)                        >} %basketId); 
+SET f.Frequenz.inkl.T_Std = Count(DISTINCT {<               $(sm.AJ), posbasket.stunde={$1} >} %basketId); 
+SET f.Frequenz.o.T        = Count(DISTINCT {< $(sm.noFuel), $(sm.AJ)                        >} %basketId); 
+SET f.Frequenz.o.T_Std    = Count(DISTINCT {< $(sm.noFuel), $(sm.AJ), posbasket.stunde={$1} >} %basketId); 
+SET f.Frequenz.T          = Count(DISTINCT {< $(sm.isFuel), $(sm.AJ)                        >} %basketId);  
+SET f.Frequenz.T_Std      = Count(DISTINCT {< $(sm.isFuel), $(sm.AJ), posbasket.stunde={$1} >} %basketId); 
+SET f.Frequenz.o.T_StdFarbe = argb(0,0,0,0);
+
+// Anzahl Belege in QlikView migrierten Arbeitsblättern 
+
+SET f.QVBelege =         Count(DISTINCT {< $(sm.AJ)                            >} %basketId);
+SET f.QVBelege_Vgl =     Count(DISTINCT {< $(sm.VJ)                            >} %basketId);
+SET f.QVBelege_LJ =      Count(DISTINCT {< Jahr={$:(=Max(Jahr))}               >} %basketId);
+SET f.QVPivotBelege =    Count(DISTINCT {< Date={"$:(=$(vDateMax))"}, $(sm.AJ) >} %basketId); 
+SET f.QVPivotBelege_VW = Count(DISTINCT {< Date={"$:(=$(vDateMax))"}, $(sm.VW) >} %basketId); 
+SET f.QVPivotBelege_VJ = Count(DISTINCT {< Date={"$:(=$(vDateMax))"}, $(sm.VJ) >} %basketId); 
+
+CALL FixVariables('f.QVBelege_LJ, f.QVPivotBelege, f.QVPivotBelege_VW, f.QVPivotBelege_VJ');
+
+// Conny-Bericht Definition von Frequenz
+
+SET f.Belege_C           = Count(DISTINCT {< $(sm.AJ)                          >} %basketId);  
+SET f.Belege_VJ_C        = Count(DISTINCT {< $(sm.VJ)                          >} %basketId);
+SET f.Belege_VVJ_C       = Count(DISTINCT {< $(sm.VVJ)                         >} %basketId);
+SET f.Belege_VVVJ_C      = Count(DISTINCT {< $(sm.VVVJ)                        >} %basketId);
+SET f.Belege_VJ_rolling  = Count(DISTINCT {< $(sm.VJ_rolling)                  >} %basketId);
+SET f.Belege_VVJ_rolling = Count(DISTINCT {< $(sm.VVJ_rolling)                 >} %basketId);
+SET f.Belege_VVVJ_rolling= Count(DISTINCT {< $(sm.VVVJ_rolling)                >} %basketId);
+
+
+SET f.KpiSwitch_Options = 'Bruttoumsatz~BruttoUmsatz|Nettoumsatz~NettoUmsatz|Absatz~Absatz|Frequenz~Frequenz';
+LET vToggle3 = 'Bruttoumsatz';
+SET f.TSwitch_Options = 'T~nur Treibst|o.T~ohne Treibst.|inkl.T~inkl.Treibst';
+LET vTSwitch = 'o.T';
+
+
+
+SET f.Nettodiscount.o.T = Sum({< $(sm.noFuel) >} item.amount_net_without_discount - item.amount_net);
+SET f.Nettodiscount.T   = Sum({< $(sm.isFuel) >} item.amount_net_without_discount - item.amount_net);
+
+// ------------------------------
+// ABSATZ / MENGE (TREIBSTOFF)
+// ------------------------------
+
+// Treibstoffmenge in QlikView migrierten Arbeitsblättern    
+
+SET f.QVTreibst         = Sum({< $(sm.isFuel), product.isFuel*={1}, $(sm.AJ)   >} item.quantity); 
+SET f.QVTreibst_VJ      = Sum({< $(sm.isFuel), product.isFuel*={1}, $(sm.VJ)   >} item.quantity);
+SET f.QVTreibst_VVJ     = Sum({< $(sm.isFuel), product.isFuel*={1}, $(sm.VVJ)  >} item.quantity);
+SET f.QVTreibst_VVVJ    = Sum({< $(sm.isFuel), product.isFuel*={1}, $(sm.VVVJ) >} item.quantity);
+SET f.QVTreibst_LJ      = Sum({< $(sm.isFuel), product.isFuel*={1}, $(sm.AJ), Jahr={$:(=Max(Jahr))} >} item.quantity);
+SET f.QVTreibst_alt     = Sum({< $(sm.isFuel), product.isFuel*={1}, $(sm.AJ) $:(vAddSetMod.FieldsFromState:alt)  >} item.quantity);
+SET f.QVTreibst_alt2    = Sum({< $(sm.isFuel), product.isFuel*={1}, $(sm.AJ) $:(vAddSetMod.FieldsFromState:alt2) >} item.quantity);
+SET f.QVPivotTreibst    = Sum({< $(sm.isFuel), product.isFuel*={1}, $(sm.AJ), Date={"$:(=$(vDateMax))"} >} item.quantity); 
+SET f.QVPivotTreibst_VW = Sum({< $(sm.isFuel), product.isFuel*={1}, $(sm.VW), Date={"$:(=$(vDateMax))"} >} item.quantity);
+SET f.QVPivotTreibst_VJ = Sum({< $(sm.isFuel), product.isFuel*={1}, $(sm.VJ), Date={"$:(=$(vDateMax))"} >} item.quantity);
+
+CALL FixVariables('f.QVTreibst_LJ, f.QVTreibst_alt, f.QVTreibst_alt2, f.QVPivotTreibst, f.QVPivotTreibst_VW, f.QVPivotTreibst_VJ');
+
+// Conny 2 Bericht
+
+SET f.Treibst_C           = Sum({< $(sm.isFuel), $(sm.AJ)                        >} item.quantity); 
+SET f.Treibst_VJ_C        = Sum({< $(sm.isFuel), $(sm.VJ)                        >} item.quantity);
+SET f.Treibst_VVJ_C       = Sum({< $(sm.isFuel), $(sm.VVJ)                       >} item.quantity);
+SET f.Treibst_VVVJ_C      = Sum({< $(sm.isFuel), $(sm.VVVJ)                      >} item.quantity);
+SET f.Treibst_VJ_rolling  = Sum({< $(sm.isFuel), $(sm.VJ_rolling)                >} item.quantity);
+SET f.Treibst_VVJ_rolling = Sum({< $(sm.isFuel), $(sm.VVJ_rolling)               >} item.quantity);
+SET f.Treibst_VVVJ_rolling= Sum({< $(sm.isFuel), $(sm.VVVJ_rolling)              >} item.quantity);
+
+SET f.Absatz              = Sum({< $(sm.noFuel), $(sm.AJ)                        >} item.quantity); 
+SET f.Absatz_state        = Sum({$1 < $(sm.noFuel), $(sm.AJ)                     >} item.quantity); // selection state als argument bei Aufruf
+
+SET f.Absatz.inkl.T       = Sum({<               $(sm.AJ)                        >} item.quantity); 
+SET f.Absatz.inkl.T_Std   = Sum({<               $(sm.AJ), posbasket.stunde={$1} >} item.quantity); 
+SET f.Absatz.o.T          = Sum({< $(sm.noFuel), $(sm.AJ)                        >} item.quantity); 
+SET f.Absatz.o.T_Std      = Sum({< $(sm.noFuel), $(sm.AJ), posbasket.stunde={$1} >} item.quantity);
+SET f.Absatz.T            = Sum({< $(sm.isFuel), $(sm.AJ)                        >} item.quantity); 
+SET f.Absatz.T_Std        = Sum({< $(sm.isFuel), $(sm.AJ), posbasket.stunde={$1} >} item.quantity);
+SET f.Absatz.o.T_StdFarbe = argb(0,0,0,0);
+SET f.Absatz_VJ           = Sum({< $(sm.noFuel), $(sm.VJ)                        >} item.quantity); 
+SET f.Absatz_VVJ          = Sum({< $(sm.noFuel), $(sm.VVJ)                       >} item.quantity); 
+SET f.Absatz_VVVJ         = Sum({< $(sm.noFuel), $(sm.VVVJ)                      >} item.quantity); 
+SET f.Absatz_VJ_rolling   = Sum({< $(sm.noFuel), $(sm.VJ_rolling)                >} item.quantity);
+SET f.Absatz_VVJ_rolling  = Sum({< $(sm.noFuel), $(sm.VVJ_rolling)               >} item.quantity);
+SET f.Absatz_VVVJ_rolling = Sum({< $(sm.noFuel), $(sm.VVVJ_rolling)              >} item.quantity);
+SET f.Absatz_Verderb      = Sum({< $(sm.noFuel), $(sm.Verderb), $(sm.AJ)         >} item.quantity); 
+SET f.RealAbsatz.o.T      = Sum({< $(sm.noFuel), $(sm.AJ), is_Realverkauf *= {1} >} item.quantity);
+
+LET vMargeGastro = '72%';
+LET vMargeShop = '31%';
+LET vMargeTreibstoff = '9%';
+LET vMargeWäsche = '90%';
+
+// ------------------------------
+// ERTRAG
+// ------------------------------
+
+// Ertrag Berechnung in QlikView migrierten Arbeitsblättern 
+
+LET f.QVErtrag = 
+    'Sum({< $(sm.AJ)                        >} item.amount_net * Pick(MargeToma, vMargeShop, vMargeGastro, vMargeWäsche, vMargeTreibstoff))' ;
+LET f.QVErtragStunde =  
+    'Sum({< $(sm.AJ), posbasket.stunde={$1} >} item.amount_net * Pick(MargeToma, vMargeShop, vMargeGastro, vMargeWäsche, vMargeTreibstoff))';
+
+SET f.QVErtragStundeFarbe = 
+  If($:(f.QVErtragStunde($1))/Count(DISTINCT Date) > vMitarbeiterPStd*2, Green(100)
+    ,If($:(f.QVErtragStunde($1))/Count(DISTINCT Date) > vMitarbeiterPStd, Green(50),
+      Red(30)
+  ));
+
+
+SET f.calcReportC = Count(DISTINCT JahrMonat) <= 12;
+LET vMsgCalcReportC = 'Bitte nicht mehr als 12 Monate auswählen';
+
+SET f.InfoSel = Dual(Count(DISTINCT Date) 
+             & ' Tage (' & Min(Date) & ' - ' & Max(Date) & ')'
+             ,Count(DISTINCT Date));
+SET f.InfoVgl = Dual(Count(DISTINCT {< $:(sm.$:(vToggle4)) >} Date) 
+             & ' Tage (' & Min({< $:(sm.$:(vToggle4)) >} Date) & ' - ' & Max({< $:(sm.$:(vToggle4)) >} Date) & ')',
+             Count(DISTINCT {< $:(sm.$:(vToggle4)) >} Date));
+
+CALL FixVariables('f.QVErtragStundeFarbe, f.InfoVgl');
+
+SET f.InfoAJ_Tage     = Count(DISTINCT {< $(sm.AJ)   >} %calLink);  
+SET f.InfoVJ_Tage     = Count(DISTINCT {< $(sm.VJ)   >} %calLink);  
+SET f.InfoVVJ_Tage    = Count(DISTINCT {< $(sm.VVJ)  >} %calLink);  
+SET f.InfoVVVJ_Tage   = Count(DISTINCT {< $(sm.VVVJ) >} %calLink);  
+SET f.InfoAJ_VonBis   = Date(Min({< $(sm.AJ)   >} %calLink)) & ' - ' & Date(Max({< $(sm.AJ)   >} %calLink));  
+SET f.InfoVJ_VonBis   = Date(Min({< $(sm.VJ)   >} %calLink)) & ' - ' & Date(Max({< $(sm.VJ)   >} %calLink));  
+SET f.InfoVVJ_VonBis  = Date(Min({< $(sm.VVJ)  >} %calLink)) & ' - ' & Date(Max({< $(sm.VVJ)  >} %calLink));  
+SET f.InfoVVVJ_VonBis = Date(Min({< $(sm.VVVJ) >} %calLink)) & ' - ' & Date(Max({< $(sm.VVVJ) >} %calLink));  
+
+//CALL FixVariables('f.InfoVJ_Tage, f.InfoVJ_VonBis, f.InfoVVJ_Tage , f.InfoVVJ_VonBis , f.InfoVVVJ_Tage, f.InfoVVVJ_VonBis');
+
+// ------------------------------
+// MARGE
+// ------------------------------
+
+
+// f.Marge ist 0 wenn kein EK - mit neuer Formel ersetzt 28.08.2024 
+// SET f.Marge       = Sum({   < /*$(sm.noFuel),*/ $(sm.AJ) >} item.amount_net * productgroup.marge);  
+// SET f.Marge_state = Sum({$1 < /*$(sm.noFuel),*/ $(sm.AJ) >} item.amount_net * productgroup.marge);  
+// neue Formel seit 28.08.2024
+SET f.Marge       = Sum({   < /*$(sm.noFuel),*/ $(sm.AJ) >} item.line_margin_net2);  
+SET f.Marge_state = Sum({$1 < /*$(sm.noFuel),*/ $(sm.AJ) >} item.line_margin_net2);  
+// f.Marge_state braucht Argument des Selection State, etwa $(f.Marge_state($)) oder $(f.Marge_state(alt2)) 
+
+
+SET f.Marge2        = Null();
+SET f.Marge2_state  = Null();
+
+
+// ------------------------------
+// SONSTIGE KENNZAHLEN
+// ------------------------------
+
+SET f.Produkte = Count(DISTINCT {<$(sm.AJ)>} product.name);
+SET f.Stationen = Count(DISTINCT {<$(sm.AJ)>} Tankstelle);
+SET f.StationenOhneMapping = Count({1} DISTINCT {<%locationId = {"=IsNull(Tankstelle)"}>} %locationId);
+SET f.StationOhneMapping = Concat({1} DISTINCT {<%locationId = {"=IsNull(Tankstelle)"}>} %locationId, ';');
+
+SET f.CurrSelections1 = "'https://bi.stiglechner.at/sense/app/c55500d0-2589-4f58-8f4a-a698d5dd665b/sheet/511e2dc1-df0d-46e5-a115-976c2c10eb20'
+	& Replace('/select/' & GetCurrentSelections(']/select/', '/[','];[') & ']', '/select/]', '')";
+    
+SET vDateMax = Max(Date);
+SET vDateVgl1 = Date(Max(Date)-7);
+SET vDateVgl2 = Date(AddMonths(Max(Date),-12));
+
+
+// ------------------------------
+// SWITCHES / TOGGLES
+// ------------------------------
+
+
+LET vToggle4 = 'VJ'; 
+SET vToggle5 = ['VJ']; // Wert VJ ist in Hochkommas (Syntax für mehrere Werte: ['VVVJ','VVJ','VJ']
+LET vToggle6 = 'D'; 
+
+SET vDim_MonatRoll12 = Date(Aggr(Min(JahrMonat), Monat), 'MMM');
+SET vLabel_JahreAJ   = Year(Min(Date)) & If(Year(Max(Date))>Year(Min(Date)), '/' & Right(Year(Max(Date)),2));
+SET vLabel_JahreVgl  = vToggle4 & ' ' & (Year(Min(Date)) - Match(vToggle4,'VJ','VVJ','VVVJ')) 
+    & If(Year(Max(Date)) > Year(Min(Date)), '/' & Right(Year(Max(Date)) - Match(vToggle4,'VJ','VVJ','VVVJ'),2));
+
+// Farbformel in Balken-diagramme "Conny 2" Berichten 
+SET vColor_Balken1  = If(IsNull(Below(RowNo())), '#87205D', '#006580');
+
+
+
+// This script allows to define a number of fields as "global" fields even when used within
+// an alternate state. With that, you've got "almost alternate states". Typically, that are
+// date fields (year, month, ...) which should act as global, whereas all other selections
+// should be private within an alternate state (which they are by default)
+
+// This script snippet will create three variables, two of which you can use within/or as a
+// set analysis. vSyncSelAll and vAddSyncSel
+// Usage examples:
+//     Sum ( $(vSyncSelAll) Sales)
+//     Sum ( {< field = {"value"} $(vAddSyncSel) >} Sales)
+
+// See https://www.youtube.com/watch?v=jQVzMaxABNA
+
+// To tell the script, which field(s) you want to sync into the alternate states, put 
+// a pattern match list (in single quotes, comma-separated) into variable vSyncFields 
+// before including the below lines of script, for example
+// SET vSyncFields = [ 'order_date*' , 'employee_id', 'shipping_date*' ];
+SET vDontSyncFields = [ 'productgroup.name1' , 'Vorjahr' ];
+
+// WHEN Len(Trim('$(vSyncFields)'))=0 SET vSyncFields = ['*'];
+SET vFieldsWithSelections = [=Replace('ValueList('&CHR(39)&GetCurrentSelections('*/,'&CHR(39),CHR(39)&'/*','',1,'$')&'*/)','ValueList(''*/)','Null()')];
+SET vOpenSet = ['{$1<'&];
+SET vCloseSet = [&'>}'];
+SET vSetSep = [','&];
+SET vMarker1 = ['/*`*/'&];
+SET vMarker2 = [&'/*´*/'];
+SET vFixEmptySet = ['/*`*/{<>}/*´*/',''];
+SET vFixEmptySep = ['/*`*/,/*´*/',''];
+SET vSyncSel = Concat(If(NOT WildMatch(§(vFieldsWithSelections), §(vDontSyncFields))
+	,'[' & §(vFieldsWithSelections) & '] =P({$1}[' & §(vFieldsWithSelections) & '])' ), ' , ');
+LET vSyncSel = Replace(vSyncSel, '§(', '$' & '(');    
+//$Fix: MAPPING LOAD '§(', '$' & '(' AUTOGENERATE(1);
+//LET vSyncSel = MapSubString('$Fix', vSyncSel);
+LET vSyncSelAll = '=Replace(' & vMarker1 & vOpenSet & vSyncSel & vCloseSet & vMarker2 & ', $(vFixEmptySet) )';
+LET vAddSyncSel = '=Replace(' & vMarker1 & vSetSep & vSyncSel & vMarker2 & ', $(vFixEmptySep) )';
+// Delete all the temp variables
+LET vMarker1 = Null(); 
+LET vMarker2 = Null();
+LET vOpenSet = Null(); 
+LET vCloseSet = Null(); 
+LET vSetSep = Null();
+LET vFixEmptySet = Null();
+LET vFixEmptySep = Null();

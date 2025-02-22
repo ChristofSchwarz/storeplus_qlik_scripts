@@ -1,0 +1,130 @@
+// // temporär noch keine Schnepfdaten importieren ins Produktiv-Salesdashboard
+
+// IF DocumentName() = 'ac4d87e8-1a2d-4492-a19c-182ee68a50e9' THEN
+//     SET vMoreFilters = AND NOT Source = 'Schnepf';
+// ELSE
+//     LET vMoreFilters = '';
+// ENDIF
+
+
+// mapMarge4ProdGrp:
+// MAPPING LOAD 
+//     %prodGrpId
+//     ,productgroup.marge
+// FROM
+//     [$(vQvdPath_Combined)/productgroup.qvd] (qvd)
+// WHERE
+//     Len(productgroup.marge);
+
+mapMarge4Prod:
+MAPPING LOAD
+    %productId
+    // ,ApplyMap('mapMarge4ProdGrp', %prodGrpId, Null()) AS product.marge
+    // ,product.marge
+    ,productgroup.marge
+FROM
+    [$(vQvdPath_Combined)/product.qvd] (qvd)
+WHERE
+    // Len(ApplyMap('mapMarge4ProdGrp', %prodGrpId, Null()));
+    Len(productgroup.marge);
+
+posbasket_item0:
+LOAD 
+    * 
+FROM 
+    [$(vQvdPath_Combined)/posbasket+item.qvd] (qvd)
+WHERE 
+    Exists(%calLink); // $(vMoreFilters);
+
+posbasket_item:
+LOAD 
+    *
+    // Neu 28.08.2024, Margen %-Satz aus Performance-Gründen zu posbasket_item dazu
+    ,ApplyMap('mapMarge4Prod', %productId, Null()) AS item.marge
+    ,Coalesce(ApplyMap('mapMarge4Prod', %productId, Null()) * item.amount_net
+        ,[item.line_margin_net], 0) AS item.line_margin_net2
+RESIDENT 
+    posbasket_item0;
+DROP TABLE 
+    posbasket_item0;
+
+DROP FIELD posbasket.REF_Type FROM posbasket_item;
+DROP FIELD item.line_margin_net FROM posbasket_item;
+
+location:
+LOAD 
+    *
+    //,[Stations-Nummer] AS %STATIONSNUMMER
+    ,Upper(Tankstelle) AS %TANKSTELLE
+FROM 
+    [$(vQvdPath_Combined)/location.qvd] (qvd)
+WHERE 
+    Exists(%locationId);
+
+// Erstelle eine Variable "vAlleTankstellen" mit einer Liste aller verschiedenen Tankstellen-Namen
+// Das brauchen wir später bei 460 Section Access
+
+LET vAlleTankstellen = '';
+FOR vLocation = 1 TO FieldValueCount('Tankstelle')
+	LET vAlleTankstellen = vAlleTankstellen & If(Len(vAlleTankstellen), CHR(10)) 
+    & Upper(FieldValue('Tankstelle', vLocation));
+NEXT vLocation
+
+LET vLocation = Null();
+
+TRACE TankstellenListe:
+$(vAlleTankstellen);
+
+product:
+LOAD *
+FROM [$(vQvdPath_Combined)/product.qvd] (qvd)
+WHERE Exists (%productId);
+
+productgroup:
+LOAD DISTINCT 
+	*
+    ,Mid(productgroup.Path, 1 + Index(productgroup.Path, '\', 1)) AS productgroup.PathAbL2
+    ,RangeMin(WildMatch(productgroup.Path
+    	,'*\Shop Services / Telefon*'
+        ,'*\Pfand*'
+        ,'*\Betriebsmittel*'
+        ,'*\Sonstige Automaten*'
+        ,'*\Zutaten*'
+     ), 1) AS productgroup.exkludiert
+FROM [$(vQvdPath_Combined)/productgroup.qvd] (qvd)
+WHERE Exists (%prodGrpId);
+
+LEFT JOIN (productgroup)
+//QV_Warenart:
+LOAD * INLINE [
+  productgroup.name1, Warenart, MargeToma
+  Shop, Shop, 1
+  Gastronomie, Gastro, 2
+  Autowäsche, Wäsche, 3
+  Kraftstoff, Treibstoffe, 4
+];
+
+
+// payment_auth:
+// LOAD *
+// FROM [$(vQvdPath_Combined)/payment+auth.qvd] (qvd)
+// WHERE Exists (%basketId);
+
+
+/*
+manufacturer: 
+LOAD * 
+FROM [$(vQvdPath_Combined)/manufacturers_v3.qvd] (qvd) 
+WHERE Exists(%prodMappingId);
+
+brand: 
+LOAD * 
+FROM [$(vQvdPath_Combined)/brands_v3.qvd] (qvd) 
+WHERE Exists(%prodMappingId);
+*/
+
+// Stunde ist nun ein feld in posbasket_item
+// HourOfDay:
+// LOAD *, Hour(posbasket.posted_date) AS Stunde;
+// LOAD FieldValue('posbasket.posted_date',RecNo()) AS posbasket.posted_date
+// AUTOGENERATE(FieldValueCount('posbasket.posted_date'));

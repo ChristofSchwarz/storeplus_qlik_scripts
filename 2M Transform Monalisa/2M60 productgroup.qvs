@@ -1,0 +1,69 @@
+productgroup:
+HIERARCHY (productgroup.uid, productgroup.parent_uid, productgroup.name, , 
+	productgroup.name, 'productgroup.Path', '\', 'productgroup.hier_level')
+LOAD
+ 	uid           AS productgroup.uid
+ 	,parent_uid   AS productgroup.parent_uid
+ 	,name         AS productgroup.name
+FROM 
+	[$(vQVDLoadFolder)/productgroup.qvd] (qvd)
+// WHERE [_StationIdentity] = 1408082
+;
+
+
+DROP FIELD productgroup.parent_uid FROM productgroup;
+
+LET vRowsBefore  = NoOfRows('productgroup');
+
+LEFT JOIN (productgroup)
+LOAD
+	// JOIN ON
+    uid                         AS productgroup.uid
+    // add fields
+    ,'ML|' & uid                AS %prodGrpId
+//     ,description                AS productgroup.description
+//     ,mandator                   AS productgroup.mandator
+    ,name                       AS productgroup.name
+    ,valid                      AS productgroup.valid
+//     ,parent_uid                 AS productgroup.parent_uid
+//     ,is_stockable               AS productgroup.is_stockable
+//     ,stock_evaluation           AS productgroup.stock_evaluation
+//     ,financial_accounting_group AS productgroup.financial_accounting_group
+//     ,financial_tax_group        AS productgroup.financial_tax_group
+//     ,product_type               AS productgroup.product_type
+//     ,kt4code                    AS productgroup.kt4code
+//     ,euro_code                  AS productgroup.euro_code
+//     ,youth_protection_class     AS productgroup.youth_protection_class
+//     ,label_type                 AS productgroup.label_type
+//     ,group_count_percentage     AS productgroup.group_count_percentage
+    
+FROM 
+	[$(vQVDLoadFolder)/productgroup.qvd] (qvd)
+// WHERE
+// 	valid = 'True'
+;
+
+
+CONCATENATE  (productgroup)
+LOAD 
+	* 
+    ,'True' AS productgroup.valid
+    ,SubField(productgroup.Path, '\', -1) AS productgroup.name
+    ,SubField(productgroup.Path, '\', 1) AS productgroup.name1
+    ,If(SubStringCount(productgroup.Path, '\')>=1, SubField(productgroup.Path, '\', 2)) AS productgroup.name2
+    ,If(SubStringCount(productgroup.Path, '\')>=2, SubField(productgroup.Path, '\', 3)) AS productgroup.name3
+    ,If(SubStringCount(productgroup.Path, '\')>=3, SubField(productgroup.Path, '\', 4)) AS productgroup.name4
+    ,1+SubStringCount(productgroup.Path, '\') AS productgroup.hier_level
+INLINE [
+    %prodGrpId, productgroup.Path
+	ML|pseudo-shop, Shop\(Artikel ohne Umsatz)
+    ML|pseudo-gast, Gastronomie\(Artikel ohne Umsatz)
+    ML|pseudo-fuel, Kraftstoff\(Artikel ohne Umsatz)
+    ML|pseudo-clean, Autowäsche\(Artikel ohne Umsatz)
+    ML|pseudo-migration, Migration\(Artikel ohne Umsatz)
+];
+
+// STORE productgroup INTO [$(vQVDSaveToFolder)/productgroup.qvd] (qvd);
+// Store von productgroup ist im script 2M61
+
+

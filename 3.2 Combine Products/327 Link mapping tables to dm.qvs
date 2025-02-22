@@ -1,0 +1,37 @@
+/*   
+[mapping-prodname2]:
+NOCONCATENATE LOAD
+	[mapping-prodname.prod_id] AS %productId, *
+RESIDENT [mapping-prodname];
+DROP TABLE [mapping-prodname];
+RENAME TABLE [mapping-prodname2] TO [mapping-prodname];
+*/
+
+FOR EACH vTABLE IN 'prodid-prodname', 'prodid-brand', 'prodid-manufacturer', 'prodid-prodgroup'
+
+    [$(vTABLE)2]:
+    NOCONCATENATE LOAD
+        [$(vTABLE).prodMappingId] AS %prodMappingId, *,
+        If(Exists( %prodMappingId, [$(vTABLE).prodMappingId])
+        	,Dual(Chr(10003),-1), Dual(Chr(9888),0)) AS [$(vTABLE).prodMappingId.exists]
+    RESIDENT [$(vTABLE)];
+    DROP TABLE [$(vTABLE)];
+    RENAME TABLE [$(vTABLE)2] TO [$(vTABLE)];
+
+NEXT vTABLE
+
+
+FOR EACH vTABLE IN 'ean-prodname', 'ean-brand', 'ean-manufacturer', 'ean-prodgroup'
+
+    [$(vTABLE)2]:
+    NOCONCATENATE LOAD
+        *,
+        If(Exists( ean, [$(vTABLE).ean]), 
+        	Dual(Chr(10003),-1), Dual(Chr(9888),0)) AS [$(vTABLE).ean.exists]
+    RESIDENT [$(vTABLE)];
+    DROP TABLE [$(vTABLE)];
+    RENAME TABLE [$(vTABLE)2] TO [$(vTABLE)];
+
+NEXT vTABLE
+
+// checke ob es "blinde Mappings" gibt (key zeigt ins Leere)

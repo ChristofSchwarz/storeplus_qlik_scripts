@@ -1,0 +1,55 @@
+/*
+changes:
+02-09-2022 Christof Schwarz: stationsliste.xlsx nicht mehr notwendig, stattdessen 
+
+*/
+
+// stationsliste:
+// MAPPING LOAD
+//     [Stations-Nummer],
+//     KST 
+// FROM 
+// 	[lib://D-QVD-aaaa/Mappings/stationsliste.xlsx]
+// 	(ooxml, embedded labels, table is Tabelle1)
+// WHERE
+// 	Len(Trim(Tankstelle)) > 0;
+
+
+
+location:
+LOAD
+     'ML|' & uid                    AS %locationId
+    ,'ML|' & mandator               AS %mandator   
+//     ,ApplyMap('stationsliste', Mid(ident, 3), '?' & ident) AS %kstStation   
+    ,If(Len(ident)=7, Right(ident, 5), if(Len(ident), ident, uid)) AS [Stations-Nummer]
+//     ,uid                            AS location.uid
+//     ,creation_date                  AS location.creation_date
+//     ,modification_date              AS location.modification_date
+//     ,description                    AS location.description
+//     ,mandator                       AS location.mandator
+    ,name                           AS location.name
+    ,debitor_id                     AS location.debitor_id
+//     ,debitor_name                   AS location.debitor_name
+//     ,e_location_ownership           AS location.e_location_ownership
+//     ,e_location_station_fiscal_type AS location.e_location_station_fiscal_type
+//     ,fiscal_active                  AS location.fiscal_active
+//     ,fiscal_active_fuel_shipment    AS location.fiscal_active_fuel_shipment
+//     ,fiscal_activetk                AS location.fiscal_activetk
+//     ,fuel_price_managed             AS location.fuel_price_managed
+//     ,location_country_code          AS location.location_country_code
+//     ,location_nav_info              AS location.location_nav_info
+//     ,mandator_namenav               AS location.mandator_namenav
+//     ,shell_site_id                  AS location.shell_site_id
+//     ,start_date                     AS location.start_date
+//     ,ident                          AS location.ident
+//     ,tobacco_law                    AS location.tobacco_law
+//     ,iqcard_type                    AS location.iqcard_type
+//     ,station_type                   AS location.station_type
+//     ,lincsafe_available             AS location.lincsafe_available
+FROM 
+	[$(vQVDLoadFolder)/location.qvd] (qvd)
+WHERE 
+	valid = 'True';
+
+
+// Warte mit STORE location INTO ... bis zu script 2M26

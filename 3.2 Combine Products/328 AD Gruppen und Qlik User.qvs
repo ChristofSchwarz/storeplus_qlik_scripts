@@ -1,0 +1,112 @@
+// Neu: 19-09-2023 Tabellen mit AD Gruppen
+
+tADUsers:
+LOAD
+	UserDN
+    ,UserName
+    ,Lower(Mail) AS Email
+FROM 
+	[lib://DataRoot/Base/AD/ADBenutzer.qvd] (qvd);
+
+LEFT JOIN (tADUsers)
+// tGroupMembers:
+LOAD
+// JOIN ON
+    UserDN
+// ADD FIELD(s)
+    ,GroupDN
+FROM 
+	[lib://DataRoot/Base/AD/ADGruppenmitglieder.qvd] (qvd);
+
+
+
+LET vQRS_URL_Users = 'https://srqsysti001.stiglechner.co.at/headervp/qrs/user/full';
+
+LIB CONNECT TO 'QRS-API GET';
+
+RestConnectorMasterTable:
+SQL SELECT 
+	"id" AS "id_u0",
+	"createdDate" AS "createdDate_u0",
+	"modifiedDate" AS "modifiedDate_u0",
+	"modifiedByUserName" AS "modifiedByUserName_u0",
+	"userId",
+	"userDirectory",
+	"userDirectoryConnectorName",
+	"name",
+	"inactive",
+	"removedExternally",
+	"blacklisted",
+	"deleteProhibited",
+	"privileges",
+	"schemaPath" AS "schemaPath_u0",
+	"__KEY_root",
+	(SELECT 
+		"id",
+		"createdDate",
+		"modifiedDate",
+		"modifiedByUserName",
+		"attributeType",
+		"attributeValue",
+		"externalId",
+		"schemaPath",
+		"__FK_attributes"
+	FROM "attributes" FK "__FK_attributes")
+FROM JSON (wrap on) "root" PK "__KEY_root"
+WITH CONNECTION (
+	URL "$(vQRS_URL_Users)?xrfkey=0123456789abcdef"
+);
+
+
+[tQMCusers]:
+LOAD	
+	[userId]
+	,[userDirectory]
+    ,'UserDirectory=' & userDirectory & '; UserId=' & userId AS QRS.OSUSER
+    ,Upper(userDirectory & '\' & userId)                     AS QRS.QLIK_USER
+	,[name]                                                  AS QRS.USERNAME
+	,[__KEY_root]
+RESIDENT 
+	RestConnectorMasterTable
+WHERE 
+	NOT IsNull([__KEY_root])
+    AND NOT blacklisted LIKE 'True'
+    AND NOT inactive LIKE 'True';
+
+
+LEFT JOIN (tQMCusers)
+LOAD	
+// JOIN ON
+	[__FK_attributes] AS [__KEY_root]
+// ADD FIELDS
+	,Lower([attributeValue]) AS Email
+
+RESIDENT
+	RestConnectorMasterTable
+WHERE 
+	NOT IsNull([__FK_attributes])
+    AND attributeType LIKE 'Email'
+;
+
+
+DROP TABLE RestConnectorMasterTable;
+
+OUTER JOIN (tADUsers)
+//INNER JOIN (tADUsers)   // wir brauchen nur Gruppen Zugehörigkeiten von Qlik-bekannten Usern
+LOAD
+// JOIN ON
+	Email
+// ADD FIELDS
+	,QRS.QLIK_USER
+	,QRS.OSUSER
+    ,QRS.USERNAME
+RESIDENT
+	tQMCusers;
+    
+DROP TABLE tQMCusers;
+
+
+STORE tADUsers INTO [$(vQvdPath_Store)/UsersAndGroups.qvd] (qvd);
+CALL GetQvdFieldNames('UsersAndGroups', vQvdPath_Store);
+
+

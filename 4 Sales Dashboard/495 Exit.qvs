@@ -1,0 +1,8 @@
+
+
+DROP TABLE [~UserTankstellen+SheetsMapping];
+DROP TABLE [tmp_CustProps];
+
+LET vAllScripts = '';
+
+EXIT SCRIPT;

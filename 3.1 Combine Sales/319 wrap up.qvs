@@ -1,0 +1,6 @@
+LEFT JOIN (reload) 
+LOAD Now() AS FinishReloadAt AUTOGENERATE(1);
+
+
+LET vAllScripts = '';
+

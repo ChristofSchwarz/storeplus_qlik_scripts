@@ -1,0 +1,20 @@
+SET vKalenderFelder = 
+    Date AS Date
+    ,If(Date < Floor(Now()), 1, 0) AS Vergangen 
+    ,Day(Date) AS Tag
+    ,Month(Date) AS Monat
+    ,WeekStart(Date) AS Woche
+    ,Jahr
+    ,JahrMonat
+    ,JahrWoche
+;
+
+calendar:
+LOAD
+    %calLink,
+    0 AS Vorjahr,
+    $(vKalenderFelder)
+FROM 
+	[$(vQvdPath_Combined)/calendar.qvd] (qvd)
+WHERE 
+	Index('$(Daten_Jahr)', Jahr);  

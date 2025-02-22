@@ -1,0 +1,54 @@
+LET vFromQVD = '$(vQVDLoadFolder)/StationMappings.qvd';
+//CALL traceQvdRows(vFromQVD);
+
+/*
+stationsliste:
+MAPPING LOAD
+    [Stations-Nummer],
+    KST 
+FROM 
+	[lib://D-QVD-aaaa/Mappings/stationsliste.xlsx]
+	(ooxml, embedded labels, table is Tabelle1)
+WHERE
+	Len(Trim(Tankstelle)) > 0;
+*/
+
+location:
+LOAD
+    'KST|' & kstStationNumber  AS %locationId
+    ,'KST|' & kstStationNumber AS [~kstStationNumber]
+//     ,ApplyMap('stationsliste', Mid(kstStationNumber, 3), '?' & kstStationNumber) AS %kstStation
+    ,If(Len(kstStationNumber)=7, Right(kstStationNumber, 5), kstStationNumber) AS [Stations-Nummer]
+    ,iQStationNumber           AS location.iQStationNumber
+    ,StationName               AS location.name 
+    ,ENIStationNumber          AS location.ENIStationNumber
+FROM 
+	[$(vFromQVD)] (qvd)
+WHERE
+	Exists(%locationId, 'KST|' & kstStationNumber);
+
+
+// Fill the location table with foreign keys from facts, which are not listed here
+
+CONCATENATE (location)
+LOAD 
+	%locationId
+    ,If(%locationId LIKE 'KST|???????', Right(%locationId, 5), %locationId) AS [Stations-Nummer]
+//     ApplyMap('stationsliste', Mid([~locationId],3), '?' & [~locationId]) AS %kstStation
+;
+LOAD 
+    %locationId
+    ,SubField(%locationId, 'KST|', 2) AS [~locationId]
+WHERE 
+	FieldIndex('~kstStationNumber', %locationId) = 0;
+LOAD 
+	FieldValue('%locationId', RecNo()) AS %locationId
+AUTOGENERATE 
+	(FieldValueCount('%locationId'));
+
+DROP FIELD [~kstStationNumber] FROM location;
+
+
+
+STORE location INTO [$(vQVDSaveToFolder)/location.qvd] (qvd);
+CALL GetQvdFieldNames('location', vQVDSaveToFolder);

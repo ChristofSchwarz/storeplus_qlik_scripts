@@ -1,0 +1,154 @@
+// get cost-prices (Einkaufspreise) for products
+
+LET vRowsBefore = NoOfRows('posbasket_item'); 
+
+
+LET vFromQVD = '$(vQVDLoadFolder)/T_PropPrices.qvd';
+//CALL traceQvdRows(vFromQVD);
+
+productprice0:
+LOAD
+//     _StationIdentity
+//     ,REF_Site
+     REF_Product                                     AS productprice.product
+    ,'KST|' & _StationIdentity & '|' & REF_Product   AS %productId
+    ,C_NumPrc                                        AS productprice.baseprice
+//     ,C_NumPrcList                                    AS productprice.listprice
+//     ,C_BoolIsSales
+//     C_BoolIsProcurement
+    ,TimeStamp(C_DtBegin, 'YYYY-MM-DD hh:mm:ss.fff') AS productprice.validfrom
+    ,TimeStamp(C_DtEnd, 'YYYY-MM-DD hh:mm:ss.fff')   AS productprice.validto_orig
+//     ,C_StrDiscount
+//     ,C_StrAdditional
+//     REF_Time,
+//     REF_PriceCode,
+//     REF_TypeTarif,
+//     REF_TypeTarifMod,
+//     REF_Supplier,
+//     REF_DataQuality,
+//     isProtected,
+//     isDischarged,
+//     rowLogin,
+//     rowUpdate,
+     ,rowGuid                                         AS productprice.uid
+//     rowVersion
+FROM 
+	[$(vFromQVD)] (qvd)
+WHERE
+    C_BoolIsProcurement = 1 AND C_NumPrc < 1000;  // plausibility check
+    
+TRACE Sorting productprice table ...;    
+productprice:
+NOCONCATENATE LOAD
+    *
+    ,RowNo() AS productprice.sortId
+    ,Timestamp(If(productprice.product = Peek('productprice.product', -1, 'productprice'), 
+        Peek('productprice.validfrom', -1, 'productprice') - 1/24/3600/1000,
+        MakeDate(2199,12,31))
+        ,'YYYY-MM-DD hh:mm:ss.fff') AS productprice.validto
+RESIDENT
+    productprice0
+ORDER BY 
+    productprice.product ASC, 
+    productprice.validfrom DESC;
+    
+DROP TABLE productprice0;
+
+LEFT JOIN (productprice)
+LOAD // JOIN ON
+    %productId
+    ,Max([productprice.sortId]) AS [productprice.sortId]
+   // Add field
+    ,1 AS productprice.is_first_entry
+RESIDENT
+   productprice
+GROUP BY
+    [%productId];
+    
+TRACE fill more interval-match entries for the past ...;
+
+// Fill more values for the past before the first entry and assume the oldest available baseprice
+CONCATENATE (productprice)
+LOAD
+    %productId 
+    ,Timestamp(MakeDate(1900,1,1),'YYYY-MM-DD hh:mm:ss.fff') AS productprice.validfrom
+    ,productprice.validfrom - 1/24/3600/1000 AS productprice.validto
+    ,productprice.baseprice
+    ,productprice.product
+    ,'filled by Qlik' AS productprice.uid
+RESIDENT
+    productprice
+WHERE
+    productprice.is_first_entry = 1;
+
+LET vRowsBefore = NoOfRows('posbasket_item'); 
+
+TRACE Performing Interval Match ...;
+
+LEFT JOIN (posbasket_item)
+// JOIN ON: posbasket.posted_date, %productId
+// ADD FIELDS: productprice.validfrom, productprice.validto
+ [left joining]:
+INTERVALMATCH (posbasket.posted_date, %productId)
+LOAD 
+    productprice.validfrom
+    ,productprice.validto
+    ,%productId
+RESIDENT
+    [productprice]
+// WHERE
+//      productprice.validto > productprice.validfrom
+;
+
+IF NoOfRows('posbasket_item') <> vRowsBefore THEN 
+    [Error: Interval Match led to a duplication of rows in table "item". Seems like validfrom-validto periods are not unique per posbasket.posted_date and %productId ...];
+END IF;
+
+
+STORE [productprice] INTO [$(vQVDSaveToFolder)/productprice.qvd] (qvd);
+CALL GetQvdFieldNames('productprice', vQVDSaveToFolder);
+
+
+TRACE Joining product price into posbasket_item table;
+LET vRowsBefore = NoOfRows('posbasket_item'); 
+
+LEFT JOIN (posbasket_item)
+LOAD
+  // JOIN ON
+    productprice.validfrom
+    ,productprice.validto
+    ,%productId
+ // ADD fields
+    ,Concat(productprice.uid,';') AS productprice.uids
+    ,Only(productprice.baseprice) AS item.cost_price
+RESIDENT
+    productprice
+GROUP BY
+    productprice.validfrom
+    ,productprice.validto
+    ,%productId
+;
+
+
+IF NoOfRows('posbasket_item') <> vRowsBefore THEN 
+    [Error: Left join of productprice into posbasket_item table led to a duplication of rows. This should not happen.];
+END IF;
+
+DROP TABLE productprice;
+
+TRACE Create line_margin_net field in posbasket_item table;
+
+STORE posbasket_item INTO [$(vQVDSaveToFolder)/~tmp~posbasket_item.qvd] (qvd);
+DROP TABLE posbasket_item;
+
+posbasket_item:
+LOAD 
+    *
+    ,item.quantity * (item.price_net - item.cost_price) AS item.line_margin_net
+    ,FAbs(RangeSum(is_WERB, is_EVMA, is_EVGF, is_EV, is_VERD, is_DIEB) = 0) AS is_Realverkauf
+FROM 
+	[$(vQVDSaveToFolder)/~tmp~posbasket_item.qvd] (qvd);
+
+
+STORE posbasket_item INTO [$(vQVDSaveToFolder)/posbasket+item.qvd] (qvd); 
+CALL GetQvdFieldNames('posbasket+item', vQVDSaveToFolder);

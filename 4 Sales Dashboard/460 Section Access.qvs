@@ -1,0 +1,97 @@
+
+// Beginne SECTIONACCESS Tabelle mit dem System User INTERNAL\SA_SCHEDULER 
+
+SECTIONACCESS: 
+LOAD DISTINCT
+    *
+    ,%TANKSTELLE                                   AS SA.TANKSTELLE
+;
+LOAD DISTINCT
+	'INTERNAL\SA_SCHEDULER'                        AS SA.USERID
+    ,'ADMIN'                                       AS SA.ACCESS
+    ,SubField('$(vAlleTankstellen)', CHR(10))      AS %TANKSTELLE
+    ,'SA Scheduler'                                AS SA.UserName
+    ,'UserDirectory=INTERNAL; UserId=sa_scheduler' AS SA.OSUSER
+    ,'hardcoded requirement'                       AS SA.Reason
+AUTOGENERATE(1);
+
+
+// Füge alle Admins laut QMC Custom Property hinzu.
+
+CONCATENATE (SECTIONACCESS)
+LOAD DISTINCT
+    *
+    ,%TANKSTELLE                                       AS SA.TANKSTELLE
+;
+LOAD DISTINCT
+	'ADMIN'                                            AS SA.ACCESS
+    ,QMC.QLIK_USER                                     AS SA.USERID
+    ,QMC.UserName                                      AS SA.UserName
+    ,QMC.QLIK_USER                                     AS [~ADMINUSER]
+    ,SubField('$(vAlleTankstellen)', CHR(10))          AS %TANKSTELLE
+//     ,QMC.UserName   AS [SA.UserName]
+    ,QMC.OSUSER                                        AS SA.OSUSER
+    ,'Custom Property SalesDashboardAccessLevel (QMC)' AS SA.Reason
+RESIDENT
+	tQMCusers
+WHERE
+	QMC.SalesDashboardAccessLevel LIKE 'ADMIN'
+;
+
+
+
+// Alle user (die nicht bereits laut QMC Custom Property ADMIN sind), werden als USER
+// zu SECTIONACCESS hinzugefügt. 
+// Tankstellen, die es in der locations Tabelle nicht (mehr) gibt, werden nicht geladen
+
+CONCATENATE (SECTIONACCESS)
+LOAD DISTINCT
+    *
+    ,%TANKSTELLE                              AS SA.TANKSTELLE
+WHERE
+    Exists(%TANKSTELLE)
+;
+LOAD DISTINCT
+	'USER'                                    AS SA.ACCESS
+	,If([Tankstelle/Arbeitsblätter]='*'
+        ,SubField('$(vAlleTankstellen)', CHR(10))
+        ,Upper([Tankstelle/Arbeitsblätter])
+     )                                        AS %TANKSTELLE
+    ,'STIGLECHNER\' & Trim(Upper(UserID))     AS SA.USERID
+    // ,Lookup('QMC.OSUSER', 'QMC.QLIK_USER', 'STIGLECHNER\' & Trim(Upper(UserID)), 'tQMCUsers')
+    ,Applymap('Lookup_OSUser_By_UserId', 'STIGLECHNER\' & Trim(Upper(UserID)), Null())
+                                              AS SA.OSUSER
+    ,ApplyMap('Lookup_UserName_By_UserId', 'STIGLECHNER\' & Trim(Upper(UserID)), UserID)
+                                              AS SA.UserName
+    ,'Excel Matrix'                           AS SA.Reason
+RESIDENT
+	[~UserTankstellen+SheetsMapping]
+WHERE
+	MixMatch(HasAccess, '1', 'X', 'Y', '*', 'j')
+    AND NOT Exists([~ADMINUSER], 'STIGLECHNER\' & Trim(Upper(UserID)))
+    AND NOT [Berechtigungs Kategorie] LIKE 'Arbeitsblätter';
+    
+
+DROP FIELD [~ADMINUSER] FROM SECTIONACCESS;
+
+
+IF vUseSectionAccess THEN
+
+    TRACE 🔒 SECTION ACCESS wird aktiviert in dieser App!;
+    
+    SECTION ACCESS;
+        
+    LOAD 
+        [SA.USERID]        AS USERID
+        ,[SA.ACCESS]       AS ACCESS
+        ,%TANKSTELLE
+    RESIDENT
+        SECTIONACCESS; 
+     
+    SECTION APPLICATION;
+    
+ELSE
+
+    TRACE 🔓 SECTION ACCESS wird NICHT aktiviert in dieser App!;
+    
+END IF

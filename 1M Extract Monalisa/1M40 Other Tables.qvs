@@ -1,0 +1,58 @@
+/*
+Änderungen:
+02-09-2022, Christof Schwarz, Nehme Tabellen proposal, product_proposal, location_proposal neu in LoopConfig hinzu
+07-11-2022, Christof Schwarz, tabelle "productparts" (Stücklisten) mit importieren
+
+
+This script section "other tables" simply gets the entire tables listed in "LoopConfig" below
+from SQL and stores it as QVD. This is for small and mid sized tables, not for tables like "posbasket". 
+
+*/
+
+
+
+LoopConfig: 
+LOAD * INLINE [Table, MoreFields
+	discount_card
+    mandator
+    location
+    productpartner
+    partner
+    productgroup
+    product
+    productparts
+    productgtin
+    productprice
+    product_brand
+    proposal
+    proposal_product
+    location_proposal
+	stock_transaction
+    storage
+]
+WHERE NOT Table LIKE '//*';
+
+
+FOR t = NoOfRows('LoopConfig') TO 1 STEP -1
+
+    LET vTable = Peek('Table', t-1, 'LoopConfig');
+    LET vMoreFields = Peek('MoreFields', t-1, 'LoopConfig');
+    WHEN Len(vMoreFields) LET vMoreFields = ',' & vMoreFields;
+    
+    LET vLastTimeRows = Coalesce(
+        QvdNoOfRecords('$(vQVDSaveToFolder)/$(vTable).qvd')
+        ,'noch kein QVD');
+    WHEN Coalesce(vLastTimeRows, 0) TRACE Beim letzten load waren es $(vLastTimeRows) Zeilen;
+    LET vLastTimeRows = Null();
+    TRACE Noch $(t) Tabellen, akt. Tabelle '$(vTable)' ...;
+
+    [$(vTable)]:
+    SELECT * $(vMoreFields)
+    FROM $(dbSchema)."$(vTable)";
+
+    STORE [$(vTable)] INTO [$(vQVDSaveToFolder)/$(vTable).qvd] (qvd);
+    CALL GetQvdFieldNames(vTable, vQVDSaveToFolder);
+    DROP TABLE [$(vTable)];
+  
+NEXT t
+

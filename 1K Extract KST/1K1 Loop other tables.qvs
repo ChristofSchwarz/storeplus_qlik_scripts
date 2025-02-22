@@ -1,0 +1,36 @@
+TRACE Include 1 KST Extract/1K1 Loop other tables.qvs;
+
+// The following tables will be loaded and stored as QVDs. 
+// Such tables will be loaded at once, no splitting into years/months
+
+LoopConfig: 
+LOAD * INLINE [	Table, MoreFields
+    T_PropPrices
+    T_ProductsActivations
+	T_Products, "CONVERT(varchar(50),C_IntPrimaryCode) AS C_StrPrimaryCode"
+	Def_ProductGroup
+	StationMappings
+]
+WHERE NOT Table LIKE '//*';
+
+FOR t = 1 TO NoOfRows('LoopConfig');
+
+    LET vTable = Peek('Table', t-1, 'LoopConfig');
+    LET vMoreFields = Peek('MoreFields', t-1, 'LoopConfig');
+    WHEN Len(vMoreFields) LET vMoreFields = ',' & vMoreFields;
+    
+    [$(vTable)]:
+    SELECT * $(vMoreFields)
+    FROM $(dbSchema)."$(vTable)";
+
+    STORE [$(vTable)] INTO [$(saveTo)/$(vTable).qvd] (qvd);
+    DROP TABLE [$(vTable)];
+    CONCATENATE (Reload) LOAD 
+        '$(saveTo)/$(vTable).qvd' AS QVD,
+        QvdNoOfRecords('$(saveTo)/$(vTable).qvd') AS Records 
+    AUTOGENERATE(1);
+            
+        
+NEXT t
+
+

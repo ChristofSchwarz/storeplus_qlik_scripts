@@ -1,0 +1,312 @@
+//LET vForceLoadAll = 1;
+
+// Where Condition for the "T_Receipts" table
+// SET vWhere = r.REF_Type = 100;  // dont filter REF_Types here in KST Extract, do that in Transform only
+
+    /*
+    FYI REF_Type:
+    ID_Transaction, C_StrText
+    10, Leerschaltung
+    100, Verkauf
+    110, Rücknahme (Verkauf)
+    200, Einkauf
+    210, Rückgabe (Einkauf)
+    310, (Eigen)Verwendung
+    320, (Eigen)Verbrauch
+    330, Bruch, Schwund, Verderb
+    340, Werbeaufwendung
+    350, Diebstahl
+    500, Inventur
+    900, Nullbeleg
+    910, Startbeleg
+    920, Monatsbeleg
+    930, Jahresbeleg
+    940, Schlussbeleg
+    */
+    
+IF NOT vForceLoadAll THEN
+
+    TRACE Counting #shopping carts per year/month in SQL ...;
+
+    Counting_SQL_rows:  
+    LOAD 
+    	MonthStart(PostedDate) AS MonthStart, 
+        SUM(SQL_Count) AS SQL_Count
+    GROUP BY
+        MonthStart(PostedDate);
+    SELECT 
+        Convert(date, r.C_DtPosted) AS PostedDate,
+        Count(*) AS SQL_Count         
+    FROM 
+        $(dbSchema).T_Receipts AS r
+    WHERE
+        r.C_DtPosted >= '$(vCutoffDate)'
+        // AND $(vWhere)
+    GROUP BY
+        Convert(date, r.C_DtPosted);
+
+
+    Map_SQL_rows:
+    MAPPING LOAD 
+        Year(MonthStart) & '/' & Num(Month(MonthStart)), 
+        SQL_Count 
+    RESIDENT 
+        Counting_SQL_rows;
+
+END IF
+
+
+LET vStartYear = Year(Today());
+LET vEndYear = Year(Today()) -2;
+TRACE Years $(vStartYear) TO $(vEndYear) ;
+
+FOR vYear = $(vStartYear) TO $(vEndYear) STEP -1
+
+    LET vStartMonth = If(vYear = Year(Today()), Num(Month(Today())), 12);
+    TRACE Months $(vStartMonth) TO 1 ;
+
+    FOR vMonth = $(vStartMonth) TO 1 STEP -1
+
+
+        LET vFromDate = Date(MakeDate(vYear, vMonth, 1), 'YYYYMMDD');
+        LET vToDate = Date(AddMonths(MakeDate(vYear, vMonth, 1), 1), 'YYYYMMDD');
+        TRACE [Checking data >='$(vFromDate)' <'$(vToDate)'];
+        
+        LET vQVDFileMM = Right('0$(vMonth)', 2);
+        SET vQVDFile2 = [$(saveTo)/item_$(vYear)_$(vQVDFileMM).qvd];
+        SET vQVDFile = [$(saveTo)/posbasket_$(vYear)_$(vQVDFileMM).qvd];
+        LET vQVDFileMM = Null();
+        
+        IF vForceLoadAll THEN
+        	LET vExecSQL = 1; 
+        ELSE 
+            IF Alt(FileTime(vQVDFile), 0) THEN
+                TRACE QVD File found $(vQVDFile);
+
+                LET vSQL_Count = ApplyMap('Map_SQL_rows', '$(vYear)/$(vMonth)', 0);
+
+                //Counting_QVD_rows:
+                //LOAD posbasket.rowGuid AS QVD_Count FROM [$(vQVDFile)] (qvd);
+                //LET vQVD_Count = FieldValueCount('QVD_Count');
+                //DROP TABLE Counting_QVD_rows;
+				LET vQVD_Count = QvdNoOfRecords('$(vQVDFile)');
+                
+                TRACE In SQL $(vSQL_Count) shopping carts, in QVD $(vQVD_Count) ...;
+                LET vExecSQL = If(vQVD_Count = vSQL_Count, 0, 1);
+
+            ELSE
+                TRACE QVD File NOT found $(vQVDFile);
+                LET vExecSQL = 1;
+
+            END IF
+        END IF
+        
+        TRACE Execute SQL? $(vExecSQL);
+        IF vExecSQL THEN 
+        
+            TRACE Creating $(vQVDFile);
+
+            posbasket:
+            //LOAD * WHERE posbasket.REF_Type = 100;
+            SELECT
+            //  --- add T_ReceiptS fields
+
+                 r.rowGuid                    AS "posbasket.rowGuid"
+                ,r._StationIdentity           AS "posbasket._StationIdentity"
+//                ,r.C_StrID                    AS "posbasket.ID"
+                ,r.REF_Type                   AS "posbasket.REF_Type"
+                ,r.C_DtPosted                 AS "posbasket.posted_date"
+
+//                 ,r.C_DtIssued                 AS "posbasket.creation_date"
+            //  ,r.C_DtDue                    AS "posbasket.C_DtDue"
+            //  ,r.C_DtSettled                AS "posbasket.C_DtSettled"
+            //  ,r.C_BoolIsNetBased           AS "posbasket.IsNetBased"
+            //  ,r.C_BoolIsProforma           AS "posbasket.IsProforma"
+            //  ,r.C_BoolIsCollection         AS "posbasket.IsCollection"
+            //  ,r.C_BoolIsDeliveryNote       AS "posbasket.IsDeliveryNote"
+            //  ,r.C_BoolIsDeliverySum        AS "posbasket.IsDeliverySum"
+            //  ,r.C_BoolIsSettled            AS "posbasket.IsSettled"
+            //  ,r.C_BoolIsSettledByAccount   AS "posbasket.IsSettledByAccount"
+            //  ,r.C_IntCntPrinted            AS "posbasket.CntPrinted"
+            //  ,r.C_IntCntMailed             AS "posbasket.CntMailed"
+                ,r.C_BoolIsCanceled           AS "posbasket.IsCanceled"
+                ,r.C_BoolIsCancelation        AS "posbasket.IsCancelation"
+                ,r.C_StrIDCancel              AS "posbasket.IDCancel"
+            //  ,r.REF_Cancel                 AS "posbasket.REF_Cancel"
+                ,r.C_BoolIsLoyalty            AS "posbasket.IsLoyalty"
+                ,r.C_IntIDLoyalty             AS "posbasket.IDLoyalty"
+                ,r.C_StrAssign                AS "posbasket.Assign"
+            //  ,r.C_StrUser                  AS "posbasket.User"
+            //  ,r.C_StrTerminal              AS "posbasket.Terminal"
+            //  ,r.C_StrPrintCond             AS "posbasket.PrintCond"
+            //  ,r.REF_Contact                AS "posbasket.REF_Contact"
+            //  ,r.C_StrAddresseeID           AS "posbasket.AddresseeID"
+            //  ,r.C_StrAddresseeName         AS "posbasket.AddresseeName"
+            //  ,r.C_StrAddresseeTID          AS "posbasket.AddresseeTID"
+            //  ,r.C_StrAddresseeHead         AS "posbasket.AddresseeHead"
+            //  ,r.C_StrAddressee1            AS "posbasket.Addressee1"
+            //  ,r.C_StrAddressee2            AS "posbasket.Addressee2"
+            //  ,r.C_StrAddressee3            AS "posbasket.Addressee3"
+            //  ,r.C_StrAddressee4            AS "posbasket.Addressee4"
+            //  ,r.C_StrAddressee5            AS "posbasket.Addressee5"
+            //  ,r.C_StrAddressee6            AS "posbasket.Addressee6"
+            //  ,r.C_StrAddressee7            AS "posbasket.Addressee7"
+                ,r.REF_Card                   AS "posbasket.REF_Card"
+                ,r.C_StrCardID                AS "posbasket.CardID"
+                ,r.C_StrCard1                 AS "posbasket.Card1"
+            //  ,r.C_StrCard2                 AS "posbasket.Card2"
+            //  ,r.C_StrCard3                 AS "posbasket.Card3"
+            //  ,r.C_NumTotal                 AS "posbasket.Total"
+            //  ,r.C_NumPaymentDown           AS "posbasket.PaymentDown"
+            //  ,r.C_NumPayment               AS "posbasket.Payment"
+            //  ,r.C_NumOpen                  AS "posbasket.Open"
+            //  ,r.REF_Transaction            AS "posbasket.REF_Transaction"
+            //  ,r.C_StrTextPre               AS "posbasket.TextPre"
+            //  ,r.C_StrTextPost              AS "posbasket.TextPost"
+            //  ,r.C_ObjImage                 AS "posbasket.Image"
+            //  ,r.C_IntReminderLevel         AS "posbasket.ReminderLevel"
+            //  ,r.C_DtReminderAct            AS "posbasket.ReminderAct"
+            //  ,r.C_DtReminder1              AS "posbasket.Reminder1"
+            //  ,r.C_DtReminder2              AS "posbasket.Reminder2"
+            //  ,r.C_DtReminder3              AS "posbasket.Reminder3"
+            //  ,r.C_StrExportMarker          AS "posbasket.ExportMarker"
+            //  ,r.REF_Overpayment            AS "posbasket.REF_Overpayment"
+            //  ,r.C_NumOverpayment           AS "posbasket.Overpayment"
+            //  ,r.C_BoolOverpaymentSettled   AS "posbasket.OverpaymentSettled"
+            //  ,r.C_IntIDOverpayment         AS "posbasket.IDOverpayment"
+            //  ,r.rowLogin                   AS "posbasket.rowLogin"
+            //  ,r.rowUpdate                  AS "posbasket.rowUpdate"
+            //  ,r.rowVersion                 AS "posbasket.rowVersion"
+                ,r.C_BoolHasDscnt             AS "posbasket.HasDscnt"
+                ,r.C_StrDscntID               AS "posbasket.DscntID"
+                ,r.C_StrDscntIDadd            AS "posbasket.DscntIDadd"
+                ,r.C_StrDscntText             AS "posbasket.DscntText"
+                ,r.C_NumDscnt                 AS "posbasket.Dscnt"
+                ,r.C_StrPrintAs               AS "posbasket.PrintAs"
+                ,r.C_StrPrintAdditional       AS "posbasket.PrintAdditional"
+
+            FROM
+                $(dbSchema)."T_Receipts" AS r       
+                  
+            WHERE
+                r.C_DtPosted >= '$(vFromDate)' 
+                AND r.C_DtPosted < '$(vToDate)'
+                // AND $(vWhere)
+            ;
+            
+			STORE posbasket INTO [$(vQVDFile)] (qvd);
+            DROP TABLE posbasket;            
+            CONCATENATE (Reload) LOAD 
+            	'$(vQVDFile)' AS QVD,
+            	QvdNoOfRecords('$(vQVDFile)') AS Records 
+            AUTOGENERATE(1);
+            
+
+            TRACE Creating $(vQVDFile2);
+  
+            item:
+            SELECT
+            //  --- add T_ReceiptS fields
+
+                  r.rowGuid                    AS "posbasket.rowGuid"
+                 ,r._StationIdentity           AS "posbasket._StationIdentity"
+            
+            // --- add T_Receiptlines fields
+            //     rl.REF_Receipt                AS "posbasket.rowGuid"
+            //  ,rl.rowGuid                    AS "item.rowGuid"
+            //    ,rl._StationIdentity           AS "posbasket._StationIdentity"
+                ,rl.C_IntLineCnt               AS "item.itemid"
+                ,rl.C_StrMark                  AS "item.Mark"
+                ,rl.C_StrTextFull              AS "item.TextFull"
+            //  ,rl.C_StrTextDisplay           AS "item.TextDisplay"
+            //  ,rl.C_StrTextAdd               AS "item.TextAdd"
+                ,rl.C_NumQuant                 AS "item.quantity"
+            //  ,rl.C_StrComment1              AS "item.Comment1"
+            //  ,rl.C_StrComment2              AS "item.Comment2"
+            //  ,rl.C_StrComment3              AS "item.Comment3"
+            //  ,rl.C_StrGroup1                AS "item.Group1"
+            //  ,rl.C_StrGroup2                AS "item.Group2"
+            //  ,rl.C_StrGroup3                AS "item.Group3"
+            //  ,rl.REF_TarifSales             AS "item.REF_TarifSales"
+            //  ,rl.REF_TarifModification      AS "item.REF_TarifModification"
+            //  ,rl.REF_Time                   AS "item.REF_Time"
+                ,rl.REF_Product                AS "item.REF_Product"
+            //  ,rl.REF_ProductGrp             AS "item.REF_ProductGrp"
+            //  ,rl.C_StrAdaptation            AS "item.Adaptation"
+            //  ,rl.REF_Receipt                AS "item.REF_Receipt"
+            //  ,rl.rowLogin                   AS "item.rowLogin"
+            //  ,rl.rowUpdate                  AS "item.rowUpdate"
+            //  ,rl.rowGuid                    AS "item.rowGuid"
+            //  ,rl.rowVersion                 AS "item.rowVersion"
+
+            // --- add T_ReceiptsLinesTaxes fields
+
+            //  ,rlt._StationIdentity           AS "item._StationIdentity
+                ,rlt.C_StrTax                   AS "item.Tax"
+            //  ,rlt.C_StrTaxPrint              AS "item.TaxPrint
+            //  ,rlt.C_StrTaxShort              AS "item.TaxShort
+            //  ,rlt.C_NumTax                   AS "item.Tax
+                ,rlt.C_NumPrcUnitNet            AS "item.price_net"
+                ,rlt.C_NumPrcUnitGross          AS "item.price_gross"
+            //  ,rlt.C_NumPrcUnitTax            AS "item.PrcUnitTax
+                ,rlt.C_NumPrcNet                AS "item.amount_net"
+                ,rlt.C_NumPrcGross              AS "item.amount_gross"
+            //  ,rlt.C_NumPrcTax                AS "item.PrcTax
+                ,rlt.C_NumPrcListNet            AS "item.PrcListNet"
+                ,rlt.C_NumPrcListGross          AS "item.PrcListGross"
+            //  ,rlt.C_BoolIsCalcProtected      AS "item.IsCalcProtected
+                ,rlt.C_NumPrcUnitProcNet        AS "item.PrcUnitProcNet"
+                ,rlt.C_NumPrcUnitAssessNet      AS "item.PrcUnitAssessNet"
+                ,rlt.C_NumMarginProcNet         AS "item.MarginProcNet"
+                ,rlt.C_NumMarginAssessNet       AS "item.MarginAssessNet"
+            //  ,rlt.REF_TaxGrp                 AS "item.REF_TaxGrp"
+            //  ,rlt.REF_Nation                 AS "item.REF_Nation"
+            //  ,rlt.REF_ReceiptLine            AS "item.REF_ReceiptLine"
+            //  ,rlt.rowLogin                   AS "item.rowLogin"
+            //  ,rlt.rowUpdate                  AS "item.rowUpdate"
+            //  ,rlt.rowGuid                    AS "item.rowGuid"
+            //  ,rlt.rowVersion                 AS "item.rowVersion"
+                ,rlt.C_BoolIsDscnt              AS "item.IsDscnt"
+                ,rlt.C_NumPrcUnitListNet        AS "item.PrcUnitListNet"
+                ,rlt.C_NumPrcUnitListGross      AS "item.PrcUnitListGross"
+            //  ,rlt.C_StrDscntText             AS "item.DscntText"
+
+            FROM
+                $(dbSchema)."T_ReceiptsLines" AS rl
+                
+			INNER JOIN 
+                $(dbSchema)."T_Receipts" AS r        
+            ON 
+                r._StationIdentity = rl._StationIdentity
+                AND r.rowGuid = rl.REF_Receipt
+
+            INNER JOIN     
+                $(dbSchema)."T_ReceiptsLinesTaxes" AS rlt
+            ON
+                rlt._StationIdentity = rl._StationIdentity
+                AND rlt.REF_ReceiptLine = rl.rowGuid
+                  
+            WHERE
+                r.C_DtPosted >= '$(vFromDate)' 
+                AND r.C_DtPosted < '$(vToDate)'
+                // AND $(vWhere)
+            ;    
+            
+            STORE item INTO [$(vQVDFile2)] (qvd);
+            DROP TABLE item;
+            CONCATENATE (Reload) LOAD 
+            	'$(vQVDFile2)' AS QVD,
+            	QvdNoOfRecords('$(vQVDFile2)') AS Records 
+            AUTOGENERATE(1);
+            
+
+
+		END IF
+
+    NEXT vMonth;
+NEXT vYear;
+
+
+IF Alt(TableNumber ('Counting_SQL_rows'), -1) > -1 THEN 
+	DROP TABLE Counting_SQL_rows;
+END IF

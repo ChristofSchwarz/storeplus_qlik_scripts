@@ -1,0 +1,10 @@
+// Nimm das Tankstellen und Sheet Mapping aus Excel für die Zuordnung
+
+[~UserTankstellen+SheetsMapping]:
+CROSSTABLE ('UserID', 'HasAccess', 2)
+LOAD
+	*
+FROM 
+	[$(vBerechtigungenExcel)] 
+    (ooxml, embedded labels, table is UserMapping, header is 1 lines)
+;

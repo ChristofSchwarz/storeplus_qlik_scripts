@@ -1,0 +1,21 @@
+posbasket_item2:
+LOAD 
+    *
+    ,item.quantity * (item.price_net - item.cost_price) AS item.line_margin_net
+    ,FAbs(RangeSum(is_WERB, is_EVMA, is_EVGF, is_EV, is_VERD, is_DIEB) = 0) AS is_Realverkauf  // neu 17.08.2022
+RESIDENT
+    posbasket_item;
+    
+DROP TABLE posbasket_item;
+
+RENAME TABLE posbasket_item2 TO posbasket_item;
+
+STORE posbasket_item INTO [$(vQVDSaveToFolder)/posbasket+item.qvd] (qvd);
+
+CALL GetQvdFieldNames('posbasket+item', vQVDSaveToFolder);
+
+DROP TABLE posbasket_item;
+
+STORE payment_auth INTO [$(vQVDSaveToFolder)/payment+auth.qvd] (qvd);
+
+CALL GetQvdFieldNames('payment+auth', vQVDSaveToFolder);

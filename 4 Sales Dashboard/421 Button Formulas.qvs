@@ -1,0 +1,27 @@
+// Formeln, die auf dem "Dedup." Sheet in den "Developer's Friend" button verwendet werden
+SET f.SetManufacturer_Condition= Count(DISTINCT product.name)>0 AND Count(DISTINCT product.name) < 100;
+SET f.SetManufacturer_Message  = ['Wähle erst mind. 1 Produkt aus (max 100).'];
+SET f.SetBrand_Condition       = Count(DISTINCT product.name)>0 AND Count(DISTINCT product.name) < 100;
+SET f.SetBrand_Message         = ['Wähle erst mind. 1 Produkt aus (max 100).'];
+SET f.SetProdName_Condition    = Count(DISTINCT product.name)>0 AND Count(DISTINCT product.name) < 100;
+SET f.SetProdName_Message      = ['Wähle erst mind. 1 Produkt aus (max 100).'];
+SET f.SetProdGroup_Condition   = Count(DISTINCT product.name)>0 AND Count(DISTINCT product.name) < 100;
+SET f.SetProdGroup_Message     = ['Wähle erst mind. 1 Produkt aus (max 100).'];
+SET f.SetProdValid_Condition   = GetSelectedCount(product.name)=1;
+SET f.SetProdValid_Message     = ['Wähle erst mind. 1 Produkt aus.'];
+SET vProductsPendingChange     = [''];
+SET f.AddToProductsPendingChange = vProductsPendingChange & ',' & CHR(39) & Concat(DISTINCT product.name, CHR(39)&','&CHR(39)) & CHR(39);
+SET f.ProdNameColor = If(Match(product.name, $:(vProductsPendingChange)) > 1, ''#FFFF99'', valid.color);
+
+
+
+SET f.KategorienBreadcrumb = Replace(Replace(Replace(Replace(
+      '▸' & Only(productgroup.name1) & '▸' & Only(productgroup.name2)
+    & '▸' & Only(productgroup.name3) & '▸' & Only(productgroup.name4) & CHR(9),
+    '▸▸▸▸' & Chr(9), '')
+    ,'▸▸▸' & Chr(9), '')
+    ,'▸▸' & Chr(9), '')
+    ,'▸' & Chr(9), '');
+    
+    
+SET f.labelConny1 = If(productgroup.exkludiert = 1, 'Dieser Bericht exkludiert Betriebsintern- und Provisionsartikel Stiglechner', '');

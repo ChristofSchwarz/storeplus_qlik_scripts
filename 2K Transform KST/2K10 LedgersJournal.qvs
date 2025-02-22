@@ -1,0 +1,43 @@
+LedgersJournal:
+LOAD
+    _StationIdentity,
+    REF_Receipt,
+    C_StrPaymentExtent,
+    Subfield(Kennzeichen, ';', -1) AS Kennzeichen
+FROM 
+	[$(vQVDLoadFolder)/LedgersJournal_*.qvd] (qvd)
+WHERE 
+	LEN(Kennzeichen);
+
+// Kennzeichen mit spezieller Bedeutung werden hier als "Sonderfall" gekennzeichnet.
+
+LEFT JOIN (LedgersJournal)
+LOAD * INLINE [
+	Kennzeichen, Sonderfall
+    EVMA, is_EVMA
+    EVGF, is_EVGF
+    WERB, is_WERB
+    WERBL, is_WERB
+    Schwerpunktaktivität, is_WERB
+    ÖAMTC-Gratiskaffee, is_WERB    
+    VERD, is_VERD
+    VERDGASTR, is_VERD
+    VERDGASTRO, is_VERD
+    DIEB, is_DIEB
+//     POOL,
+]
+WHERE NOT (Kennzeichen LIKE '//*');
+
+STORE LedgersJournal INTO [$(vQVDSaveToFolder)/LedgersJournal.qvd] (qvd);
+CALL GetQvdFieldNames('LedgersJournal', vQVDSaveToFolder);
+
+Mapping_IsNotSold:
+MAPPING LOAD 
+	REF_Receipt, 
+    Sonderfall
+RESIDENT
+	LedgersJournal
+WHERE
+    LEN(Sonderfall);
+
+

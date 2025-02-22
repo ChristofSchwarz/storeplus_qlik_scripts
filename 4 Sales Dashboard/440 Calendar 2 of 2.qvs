@@ -1,0 +1,23 @@
+// Füge um 1, 2, 3 Jahre versetzte Kalender-Links zum Kalender hinzu
+
+FOR vVorjahr = -1 TO -3 STEP -1
+    CONCATENATE (calendar)
+    LOAD
+        AddMonths(%calLink, 12 * $(vVorjahr)) AS %calLink,
+        $(vVorjahr) AS Vorjahr,
+        $(vKalenderFelder)
+    FROM [$(vQvdPath_Combined)/calendar.qvd] (qvd)
+    WHERE 
+        Exists (%calLink, AddMonths(%calLink, 12 * $(vVorjahr)))
+    ;
+NEXT vVorjahr
+
+    CONCATENATE (calendar)
+    LOAD
+        %calLink -7 AS %calLink,
+        'VW' AS Vorjahr,
+        $(vKalenderFelder)
+    FROM [$(vQvdPath_Combined)/calendar.qvd] (qvd)
+    WHERE 
+        Exists (%calLink, %calLink -7)
+    ;

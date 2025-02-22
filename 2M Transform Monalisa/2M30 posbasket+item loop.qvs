@@ -1,0 +1,92 @@
+deleteBaskets:
+LOAD SubField(basketId,'|',-1) AS deleteBasketId
+FROM 
+    [$(vMappingsRootFolder)/mappings/del-basket.css]
+    (txt, utf8, embedded labels, delimiter is ',', msq)
+WHERE
+	basketId LIKE 'ML|*';
+    
+// Start empty table 
+posbasket_item: LOAD * INLINE [Source, %basketId];       
+
+FOR EACH vYear IN $(vYears)
+    TRACE Loading Monalisa posbasket data for year $(vYear) ...;
+
+    LET vRowsBefore = NoOfRows('posbasket_item'); 
+
+    CONCATENATE (posbasket_item)
+    LOAD
+        'Monalisa'                                     AS Source
+        ,'ML|' & posbasket.location_id                 AS %locationId
+        ,'ML|' & posbasket.uid                         AS %basketId
+        ,Floor(posbasket.posted_date)                  AS %calLink  
+        ,Hour(posbasket.posted_date)                   AS posbasket.stunde
+        ,100                                           AS posbasket.REF_Type  // Kompatibilität mit KST daten, die REF_Type haben
+    
+        ,posbasket.uid                                 AS posbasket.uid       
+        // ,posbasket.posted_date                         AS posbasket.posted_date
+        ,Timestamp(Floor(posbasket.posted_date, 1/24/3600), 'YYYY-MM-DD hh:mm:ss') AS 	posbasket.posted_date  // auf Sekunde genau
+        // ,posbasket.creation_date                       AS posbasket.creation_date
+        // ,posbasket.modification_date                   AS posbasket.modification_date
+        // ,posbasket.amount_given                        AS posbasket.amount_given
+        // ,posbasket.amount_gross_total                  AS posbasket.amount_gross_total
+        // ,posbasket.cashier                             AS posbasket.cashier
+        ,posbasket.id                                  AS posbasket.id
+        // ,posbasket.linked_basket                       AS posbasket.linked_basket
+        // ,posbasket.location_id                         AS posbasket.location_id
+
+        // ,posbasket.pos_id                              AS posbasket.pos_id
+        // ,posbasket.posted_date                         AS posbasket.posted_date
+        // ,posbasket.status                              AS posbasket.status
+        ,posbasket.type                                AS posbasket.type
+        // ,posbasket.station_uid                         AS posbasket.station_uid
+        // ,posbasket.rksv_signature                      AS posbasket.rksv_signature
+        // ,posbasket.rksv_state                          AS posbasket.rksv_state
+        // ,posbasket.amount_gross_total_without_discount AS posbasket.amount_gross_total_without_discount
+        // ,posbasket.is_bkmr                             AS posbasket.is_bkmr
+        // ,posbasket.is_open_account                     AS posbasket.is_open_account
+        // ,posbasket.is_open_account_payed               AS posbasket.is_open_account_payed
+        // ,posbasket.receipt_number                      AS posbasket.receipt_number
+
+        ,'ML|' & item.product_id            AS %productId
+        ,item.product_id                    AS %monalisaProductId
+        ,item.product_id                    AS productprice.product
+        //,item.uid                           AS item.uid
+        ,RowNo()                            AS item.uniqueAutoId
+        // ,item.creation_date                 AS item.creation_date
+        // ,item.modification_date             AS item.modification_date
+        ,item.additional_text               AS item.additional_text
+        ,item.amount_gross                  AS item.amount_gross
+        ,item.amount_net                    AS item.amount_net
+        ,item.cashier                       AS item.cashier
+        ,item.currency                      AS item.currency
+        ,item.pos_id                        AS item.pos_id
+        ,item.price_gross                   AS item.price_gross
+        ,item.price_net                     AS item.price_net
+        ,item.pricing_rule                  AS item.pricing_rule
+        ,item.product_id                    AS item.product_id
+        ,item.product_name                  AS item.product_name
+        ,FAbs(item.product_type = 1)        AS item.isFuel
+        ,item.product_type                  AS item.product_type
+        ,item.quantity                      AS item.quantity
+        // ,item.posbasket_uid                 AS item.posbasket_uid
+        ,item.amount_gross_without_discount AS item.amount_gross_without_discount
+        ,item.amount_net_without_discount   AS item.amount_net_without_discount
+        ,item.parent_posbasket_item_uid     AS item.parent_posbasket_item_uid
+        ,item.itemid                        AS item.itemid
+        ,item.parentitemid                  AS item.parentitemid
+
+    FROM 
+        [$(vQVDLoadFolder)/posbasket+item_$(vYear)-??.qvd] (qvd)
+    WHERE 
+        posbasket.valid = 'True'
+        AND Len(posbasket.posted_date)
+        AND NOT Exists(deleteBasketId, posbasket.uid)
+        AND Len(item.uid) // rows without an item (just posbasket header info) we don't need
+        ;
+
+    LET vRowsBefore = NoOfRows('posbasket_item') - vRowsBefore;     
+    TRACE hinzugefügt: $(vRowsBefore) Zeilen;
+             
+NEXT vYear;
+

@@ -1,0 +1,17 @@
+TRACE dropping (almost) all tables ...;
+
+FOR v = NoOfTables()-1 TO 0 STEP -1
+
+	LET vTable = TableName(v);
+    IF NOT WildMatch(vTable, 'reload', 'products_in_recent_history', 'QVD_*') THEN 
+        TRACE Dropping Table #$(v) "$(vTable)"; 
+        DROP TABLE [$(vTable)];
+    END IF
+NEXT v;
+
+LEFT JOIN (reload) 
+LOAD Now() AS FinishReloadAt AUTOGENERATE(1);
+
+LET vAllScripts = '';
+
+EXIT SCRIPT;

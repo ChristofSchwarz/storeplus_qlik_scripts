@@ -1,0 +1,132 @@
+productgtin:
+LOAD
+	uid as productgtin.uid
+// 	,creation_date
+// 	,creation_user
+// 	,modification_date
+// 	,modification_user
+// 	,valid
+	,Text(PurgeChar(Text(barcode),'�')) AS productgtin.barcode
+ 	,description                         AS productgtin.description
+// 	qrcode,
+	,product                             AS productgtin.product
+    ,'ML|' & product                     AS %productId
+	,quantity                            AS productgtin.quantity
+// 	s2g_version,
+ 	,isdefault                           AS productgtin.isdefault
+ 	,validfrom                           AS productgtin.validfrom
+ 	,validto                             AS productgtin.validto
+FROM 
+   [$(vQVDLoadFolder)/productgtin.qvd] (qvd)
+WHERE
+   Len(barcode) >1 
+   AND barcode <> 'null' 
+   AND valid LIKE 'True';
+
+STORE [productgtin] INTO [$(vQVDSaveToFolder)/productgtin.qvd] (qvd);
+CALL GetQvdFieldNames('productgtin', vQVDSaveToFolder);
+
+
+fixfragments:
+MAPPING LOAD * INLINE [from, to
+ (G)
+ (S)
+ 20FL KISTE
+ 4ER
+ 6ER
+ 24ER
+ (1)
+ (0)
+
+ " 1STK"
+ " 1 STK"
+ "   "," "
+ "  "," "
+ "0,5L FL", "0,5L"
+ "0,50L FL", "0,5L"
+ "0,50 L FL", "0,5L"
+ "1/8 LT.", "1/8L"
+ "1/8 LT", "1/8L"
+ "1/8 L", "1/8L"
+ "1/4 LT.", "1/4L"
+ "1/4 LT", "1/4L"
+ "1/4 L", "1/4L" 
+ ¼ LT, 1/4L
+ IN ARBEIT
+ (NIL)
+ LÖSCHEN
+ ß, SS
+ ROLLDISPLAY
+];
+
+ean_assignments:
+MAPPING LOAD * INLINE [
+   EAN, NAME
+   9442, GESPRITZTER ROT 1/4L
+   4064700205147, SONAX KUNSTSTOFFPFLEGE INNEN UND AUSSEN 300ML
+];
+
+
+LET vBefore = NoOfRows('productgtin');
+
+LEFT JOIN ([productgtin])
+LOAD DISTINCT
+    *, Len(productgtin.simple_name) AS productgtin.simple_name.len;
+LOAD DISTINCT
+	%productId, 
+    Replace(Trim(MapSubString('fixfragments',product.name)),'  ',' ') AS productgtin.simple_name
+RESIDENT
+    product;
+    
+
+ean_leading_productname:
+MAPPING LOAD DISTINCT
+  productgtin.barcode, productgtin.simple_name
+RESIDENT
+  productgtin
+ORDER BY
+  productgtin.barcode ASC, productgtin.simple_name.len DESC;
+  
+  
+LEFT JOIN ([productgtin])
+LOAD DISTINCT
+    productgtin.barcode, 
+    Coalesce(
+      ApplyMap('ean_assignments', productgtin.barcode, Null()),
+      ApplyMap('ean_leading_productname', productgtin.barcode)
+    ) AS productgtin.barcode_productname
+RESIDENT
+    productgtin;
+
+
+
+LET vAdded = NoOfRows('productgtin') - vBefore;
+TRACE productgtin: Added $(vAdded) rows through JOIN operations ...;
+
+ean:
+LOAD 
+	productgtin.barcode AS ean
+    ,Only(productgtin.barcode_productname) AS ean.productname
+    ,Count(DISTINCT productgtin.barcode_productname) AS ean.noOfProductNames
+	,Concat(DISTINCT productgtin.barcode_productname, CHR(10)) AS ean.allProductNames
+RESIDENT
+    productgtin
+GROUP BY
+    productgtin.barcode;
+
+STORE ean INTO [$(vQVDSaveToFolder)/ean.qvd] (qvd);
+CALL GetQvdFieldNames('ean', vQVDSaveToFolder);
+
+LEFT JOIN (product)
+LOAD 
+	%productId
+    // ,Text(Concat(DISTINCT [productgtin.barcode], CHR(10))) AS product.all_eans  // changed 2023-01-12: long EANs are shown in scientistic format, thats wrong
+    ,Text(Concat(DISTINCT Text([productgtin.barcode]), CHR(10))) AS product.all_eans  // changed 2023-01-12
+RESIDENT
+    productgtin
+GROUP BY	
+    %productId;
+    
+
+STORE product INTO [$(vQVDSaveToFolder)/product.qvd] (qvd);
+CALL GetQvdFieldNames('product', vQVDSaveToFolder);

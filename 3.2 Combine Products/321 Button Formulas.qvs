@@ -1,0 +1,74 @@
+$(must_include=[lib://github-ChristofSchwarz-next-prev-buttons.txt (stiglechner_schwarz.ext)]);
+CALL CreatePrevNextVar('ean', 'Text');
+
+// Formeln, die auf dem "Dedup." Sheet in den "Developer's Friend" button verwendet werden
+SET f.SetManufacturer_Condition   = Count(DISTINCT product.name)>0 AND Count(DISTINCT product.name) < 100;
+SET f.SetManufacturer_Message     = ['Wähle erst mind. 1 Produkt aus (max 100).'];
+SET f.SetManufacturerEAN_Condition= Count(DISTINCT ean)>0 AND Count(DISTINCT ean) < 8;
+SET f.SetManufacturerEAN_Message  = ['Wähle erst mind. 1 EAN aus (max 8).'];
+SET f.SetManufacturer_Options     = Concat(DISTINCT {1} product.manufacturer, CHR(10));
+
+SET f.SetBrand_Condition          = Count(DISTINCT product.name)>0 AND Count(DISTINCT product.name) < 100;
+SET f.SetBrand_Message            = ['Wähle erst mind. 1 Produkt aus (max 100).'];
+SET f.SetBrandEAN_Condition       = Count(DISTINCT ean)>0 AND Count(DISTINCT ean) < 8;
+SET f.SetBrandEAN_Message         = ['Wähle erst mind. 1 EAN aus (max 8).'];
+SET f.SetBrand_Options            = Concat(DISTINCT {1} product.brand, CHR(10));
+
+SET f.SetProdName_Condition       = Count(DISTINCT product.name)>0 AND Count(DISTINCT product.name) < 3300;
+SET f.SetProdName_Message         = ['Wähle erst mind. 1 Produkt aus (max 3300).'];
+SET f.SetProdNameEAN_Condition    = Count(DISTINCT ean)>0 AND Count(DISTINCT ean) < 8;
+SET f.SetProdNameEAN_Message      = ['Wähle erst mind. 1 EAN aus (max 8).'];
+SET f.SetProdName_Options         = Concat(DISTINCT {1} product.name, CHR(10));
+
+SET f.SetProdGroup_Condition      = Count(DISTINCT product.name)>0 AND Count(DISTINCT product.name) < 3300;
+SET f.SetProdGroup_Message        = ['Wähle erst mind. 1 Produkt aus (max 3300).'];
+SET f.SetProdGroupEAN_Condition   = Count(DISTINCT ean)>0 AND Count(DISTINCT ean) < 8;
+SET f.SetProdGroupEAN_Message     = ['Wähle erst mind. 1 EAN aus (max 8).'];
+SET f.SetProdGroup_Options        = Concat(DISTINCT {1<%prodGrpId={"ML*"}>} productgroup.Path, CHR(10));
+
+SET f.SetProdValid_Condition   = GetSelectedCount(product.name)=1;
+SET f.SetProdValid_Message     = ['Wähle erst mind. 1 Produkt aus.'];
+SET f.SetProdValid_Options      = Concat(DISTINCT product.name, CHR(10));
+
+SET vProductsPendingChange = [''];
+SET f.AddToProductsPendingChange = vProductsPendingChange & ',' & CHR(39) & Concat(DISTINCT product.name, CHR(39)&','&CHR(39)) & CHR(39);
+LET f.ProdNameColor = 'If(Match(product.name, $' & '(vProductsPendingChange)) > 1, ''#FFFF99'', valid.color)';
+
+LET vMappingsFehlenNum = '0 Mappings fehlen;-0 Mappings fehlen;';
+SET [f.ean-prodname.warning]     =If(Count([ean-prodname.path])    , Num(Count(DISTINCT ean)-Count([ean-prodname.name])            , '$(vMappingsFehlenNum)'), '');
+SET [f.ean-prodgroup.warning]    =If(Count([ean-prodgroup.path])   , Num(Count(DISTINCT ean)-Count([ean-prodgroup.path])           , '$(vMappingsFehlenNum)'), '');
+SET [f.ean-brand.warning]        =If(Count([ean-brand.path])       , Num(Count(DISTINCT ean)-Count([ean-brand.brand])              , '$(vMappingsFehlenNum)'), '');
+SET [f.ean-manufacturer.warning] =If(Count([ean-manufacturer.path]), Num(Count(DISTINCT ean)-Count([ean-manufacturer.manufacturer]), '$(vMappingsFehlenNum)'), '');
+
+
+// SET vFokus = '*';
+LET vFokusOotions='ProduktName|Produktgruooe|Brand|Manufacturer';
+SET vFokusTable= [=Pick(WildMatch(vFokus,'*Name','*gruppe','Brand','Manu*')
+	,'prodname','prodgroup','brand','manufacturer')];
+SET vFokusField= [=Pick(WildMatch(vFokus,'*Name','*gruppe','Brand','Manu*')
+	,'name','path','brand','manufacturer')];
+SET vFokusFieldInfo= [=Pick(WildMatch(vFokus,'*Name','*gruppe','Brand','Manu*')
+	,'product.name','product.prodGrpId','product.brand','product.manufacturer')];
+SET vFokusField2= [=Pick(WildMatch(vFokus,'*Name','*gruppe','Brand','Manu*')
+	,'product.name','productgroup.Path','product.brand','product.manufacturer')];
+      
+
+LET vFokus2 = '%prodMappingId';
+LET vFokus2Options = '%prodMappingId|%productId';
+
+LET vFokus3 = 'product.source';
+LET vFokus3Options = 'product.source~Datenbank|Quelle';
+
+SET vCache1Label = MinString(product.name);
+LET vCache1 = 'If(Len(vCache),vCache & CHR(10)) & ean & '',"$'&'(=$(vCache1Label))",'' & Subfield(OSUser(),''Id='',2) & '','' & Timestamp(Now(),''YYYYMMDD hhmmss'')';
+SET vCache2Label = MaxString(product.name);
+LET vCache2 = 'If(Len(vCache),vCache & CHR(10)) & ean & '',"$'&'(=$(vCache2Label))",'' & Subfield(OSUser(),''Id='',2) & '','' & Timestamp(Now(),''YYYYMMDD hhmmss'')';
+SET vCache3Label = MinString({<product.name={"=Len(product.name)=§(=Max(Len(product.name)))"}>} product.name);
+SET vCache3 = If(Len(vCache),vCache & CHR(10)) & ean & ',"§(=$(vCache3Label))",' & Subfield(OSUser(),'Id=',2) & ',' & Timestamp(Now(),'YYYYMMDD hhmmss');
+LET vCache3Label = Replace(vCache3Label,'§','$');
+LET vCache3 = Replace(vCache3,'§','$');
+
+
+SET vSelect1 = Only({<ean-={"=Count(DISTINCT {<product.source={ML}>} product.name)>0"}*{"=Count(DISTINCT product.name)>1"}>} ean);
+
+

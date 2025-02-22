@@ -1,0 +1,100 @@
+stock_transaction:
+LOAD
+    storage_uid AS %storageId
+	,'ML|' & product_uid AS %productId
+    ,posting_day AS posting_timestamp
+    ,Floor(posting_day) AS stock.valid_from
+    ,stock_before
+	,quantity
+    ,If(quantity > 0, '+', '-') AS direction
+    ,RangeSum(stock_before, quantity) AS stockamount
+    ,base_rate_unit
+	,stock_transaction_type
+FROM
+	[$(vQVDLoadFolder)/stock_transaction.qvd] (qvd)
+WHERE
+	valid = 'True'
+;
+
+INNER JOIN
+LOAD
+	uid AS %storageId,
+    'ML|' & location AS %locationId
+FROM
+	[$(vQVDLoadFolder)/storage.qvd] (qvd)
+
+;
+TRACE Aggregate per day ... will take a minute or so;
+LET vNow = Now();
+
+tmp_stock_transaction_daily:
+LOAD
+	%productId
+    ,%locationId
+    ,stock.valid_from
+    ,Concat(DISTINCT base_rate_unit, ',') AS base_rate_unit
+    ,FirstSortedValue(stockamount, -posting_timestamp) AS stockamount
+//     ,Sum(If(direction='+', quantity)) AS additions
+//     ,Sum(If(direction='-', quantity)) AS reductions
+RESIDENT
+	stock_transaction
+GROUP BY
+    %productId, %locationId, stock.valid_from
+;
+LET vNow = Round((Now() - vNow)*24*3600, 0.1);
+
+TRACE GROUP BY done in $(vNow) sec. Now sorting ...;
+
+stock_transaction_daily:
+LOAD
+	*
+    ,Hash160(%productId, %locationId) AS productLocationHash
+    ,If(Hash160(%productId, %locationId) = Peek('productLocationHash', -1, 'stock_transaction_daily')
+    	,Peek('stock.valid_from', -1, 'stock_transaction_daily') - 1    
+        ,109210) AS stock.valid_to
+RESIDENT
+	tmp_stock_transaction_daily
+ORDER BY
+     %productId ASC, %locationId ASC, stock.valid_from DESC
+;
+
+DROP TABLE stock_transaction, tmp_stock_transaction_daily;
+
+
+
+CALL GetMinMaxDate('stock.valid_from');
+
+TRACE Marking the first entry for each location/product  ...;
+
+LEFT JOIN (stock_transaction_daily)
+LOAD 
+	productLocationHash,
+	Min(stock.valid_from) AS [stock.valid_from],
+    1 AS isFirstEntry
+RESIDENT
+	stock_transaction_daily
+GROUP BY
+	productLocationHash;
+
+TRACE Filling the stockamounts with 0 before first entry ...;
+
+CONCATENATE (stock_transaction_daily)
+LOAD
+   %productId
+   ,%locationId
+   ,base_rate_unit
+   ,$(vCalMinDate) AS stock.valid_from
+   ,stock.valid_from - 1 AS stock.valid_to
+   ,0 as stockamount
+   ,1 as isFilled
+RESIDENT
+   stock_transaction_daily
+WHERE
+   isFirstEntry
+   AND [stock.valid_from] > $(vCalMinDate);
+   
+DROP FIELD productLocationHash;
+
+STORE stock_transaction_daily INTO [$(vQVDSaveToFolder)/stock_transaction_daily.qvd] (qvd);
+CALL GetQvdFieldNames('stock_transaction_daily', vQVDSaveToFolder);
+

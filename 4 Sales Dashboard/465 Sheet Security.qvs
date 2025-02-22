@@ -1,0 +1,95 @@
+/*
+
+Hier importieren wir alle User und die Sheets, die ihnen zugeordnet werden, aus
+verschiedenen Tabellen. 
+ - Gebietsleiter aus TankstellenHierarchie
+ - QMC Users with SalesDashboardSheets custom property
+ - Qlik Sense Administrators laut AD Gruppe
+ - Qlik Sense RootAdmins laut QMC
+ 
+ Weiter unten definieren wir vereinfachte Hide-Formeln für die Sheets selbst 
+*/
+
+
+Sheets:
+LOAD
+    QMC.QLIK_USER                                 AS Sheet.USERID
+    ,QMC.OSUSER                                   AS Sheet.OSUSER
+    ,QMC.UserName                                 AS Sheet.UserName
+    ,QMC.QLIK_USER & QMC.SalesDashboardSheets     AS [~QMCSHEETSUSER]
+    ,QMC.SalesDashboardSheets                     AS Sheet.Scope
+    ,'Custom Property SalesDashboardSheets (QMC)' AS Sheet.Reason    
+RESIDENT
+	tQMCusers
+WHERE
+	Len(QMC.SalesDashboardSheets)
+;
+
+
+CONCATENATE (Sheets)
+LOAD DISTINCT
+    [Tankstelle/Arbeitsblätter]               AS Sheet.Scope
+    ,'STIGLECHNER\' & Trim(Upper(UserID))     AS Sheet.USERID
+    ,Applymap('Lookup_OSUser_By_UserId', 'STIGLECHNER\' & Trim(Upper(UserID)), Null())
+                                              AS Sheet.OSUSER
+    ,ApplyMap('Lookup_UserName_By_UserId', 'STIGLECHNER\' & Trim(Upper(UserID)), UserID)
+                                              AS Sheet.UserName
+    ,'Excel Matrix'                           AS Sheet.Reason
+RESIDENT
+	[~UserTankstellen+SheetsMapping]
+WHERE
+	MixMatch(HasAccess, '1', 'X', 'Y', '*', 'j')
+    AND NOT Exists([~QMCSHEETSUSER], 'STIGLECHNER\' & Trim(Upper(UserID)) & [Tankstelle/Arbeitsblätter])
+    AND [Berechtigungs Kategorie] LIKE 'Arbeitsblätter';
+    
+DROP FIELD [~QMCSHEETSUSER] FROM Sheets;
+
+
+// CONCATENATE (Sheets)
+// LOAD
+//     QMC.QLIK_USER                AS Sheet.QLIK_USER
+//     ,QMC.OSUSER                  AS Sheet.OSUSER
+//     ,QMC.UserName                AS Sheet.UserName
+//     ,'Alle'                      AS Sheet.Scope
+//     ,'QMC RootAdmin'             AS Sheet.Reason
+// RESIDENT
+//     tQMCusers
+// WHERE
+//     WildMatch(QMC.AdminRoles, 'RootAdmin', '*;RootAdmin', 'RootAdmin;*', '*;RootAdmin;*');
+    
+
+
+/*
+Zugriff auf Sheets mit unten folgenden "Hide-Formulas" in den Sheets geregelt.
+
+Die Verwendung ist so
+$(vSheetAccess(1)) ... bei den Hide Formeln im Sheet
+$(vSheetAccess($)) ... in einer Tabelle auf dem Sheet "Security", wo man für alle
+                       Benutzer eine Übersicht erhält, ob die betreffende Formel zutrifft.
+
+Also, der Parameter $ steuert in den Formeln etwas anders, da hier nicht der OSUser() sondern
+das Feld UserName verglichen wird, das es in der Tabelle tUsers gibt.
+
+*/
+
+LET vSheetSecurityShowAll = 1;  // variable für einen Toggle im Sheet "Security", kann 1 oder $ sein
+SET vOSUserOrUserName = IF($1=1, Sheet.OSUSER LIKE OSUser(), NOT IsNull(Sheet.OSUSER));
+
+
+SET vSheetAccess1 = RangeMin(1, -Sum({$1 <Sheet.Scope={"Alle"}>} $(vOSUserOrUserName)));
+SET vSheetAccess = RangeMin(1, -Sum({$1 <Sheet.Scope={"Alle"}+{'$2'}>} $(vOSUserOrUserName)));
+
+SET vSheetAccessQV = RangeMin(1, -Sum({$1 <Sheet.Scope={"(Alle|QlikView)"}>} $(vOSUserOrUserName)));
+
+// Developer Sheets
+SET vSheetAccessDev = RangeMin(1, -Sum({$1 <Sheet.Scope={"Dev"}>} $(vOSUserOrUserName)));
+
+// Stations MA Sheets
+SET vSheetAccessStation = RangeMin(1, -Sum({$1 <Sheet.Scope={"(Alle|Tankstellen|Gebietsleiter)"}>} $(vOSUserOrUserName)));
+
+// Regionsleiter Sheets
+SET vSheetAccessRegion = RangeMin(1, -Sum({$1 <Sheet.Scope={"(Alle|Gebietsleiter)"}>} $(vOSUserOrUserName)));
+
+LET vOSUserOrUserName = Null();
+
+

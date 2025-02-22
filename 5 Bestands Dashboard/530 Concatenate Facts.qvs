@@ -1,0 +1,65 @@
+//CONCATENATE (facts)
+sales:
+LOAD
+    %basketId
+//     ,%calLink
+    ,%locationId
+    ,%productId
+    //,Hash256([%locationId], [%productId], Floor(posbasket.posted_date)) AS %stationProductDayHash
+    ,posbasket.posted_date
+//     ,posbasket.stunde
+//     ,posbasket.REF_Type
+//     ,is_EV
+//     ,is_EVMA
+//     ,is_EVGF
+//     ,is_VERD
+//     ,is_DIEB
+//     ,is_WERB
+//     ,is_Realverkauf
+//     ,Source
+    ,item.amount_gross
+    ,item.amount_net
+//     ,item.cost_price
+//     ,item.uniqueAutoId
+//     ,item.itemid
+//     ,item.line_margin_net
+//     ,item.PrcListGross//
+//     ,item.PrcListNet
+//     ,item.PrcUnitListGross
+//     ,item.PrcUnitListNet
+//     ,item.PrcUnitProcNet
+//     ,item.price_gross
+//     ,item.price_net
+     ,item.quantity
+//     ,%monalisaProductId
+//     ,item.amount_gross_without_discount
+//     ,item.amount_net_without_discount
+FROM 
+	[$(vQVDLoadFolder2)/posbasket+item.qvd] (qvd)
+WHERE
+	EXISTS (%productId);
+    
+
+// LEFT JOIN (sales)
+// LOAD
+// 	Hash256([%locationId], [%productId], Floor(posbasket.posted_date) + 1) AS %stationProductDayHash
+//     ,item.quantity AS item.quantity_daybefore
+// RESIDENT
+// 	sales
+// ;
+
+CONCATENATE (facts)
+LOAD 
+	*
+    ,'sales' AS facttype
+	,'sales:' & Date(posbasket.posted_date,'DD.MM.YYYY') AS fact.from_to
+//    ,Peek('item.quantity', -1, 'facts') AS item.quantity_before
+RESIDENT 
+	sales
+WHERE
+	posbasket.posted_date >= MakeDate(2022,01,01)
+// ORDER BY
+// 	%locationId, %productId, posbasket.posted_date
+;
+
+DROP TABLE sales;

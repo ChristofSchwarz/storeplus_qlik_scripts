@@ -1,0 +1,152 @@
+// LET vForceLoadAll = 1; 
+
+IF NOT vForceLoadAll THEN
+
+    TRACE Counting LedgerJournal entries per year/month in SQL ...;
+    TRACE ... takes about 1 min ...;
+
+    Counting_SQL_rows2:  
+    LOAD 
+     	MonthStart(PostedDate) AS MonthStart, 
+         SUM(SQL_Count) AS SQL_Count
+    GROUP BY
+         MonthStart(PostedDate);
+    SELECT 
+        Convert(date, r.C_DtPosted) AS PostedDate,
+        Count(*) AS SQL_Count         
+    FROM 
+        $(dbSchema)."T_Receipts" AS r
+    INNER JOIN
+        kstStationData.kst.T_LedgersJournals AS L    
+    ON
+            L._StationIdentity = R._StationIdentity
+        AND L.REF_Receipt = R.rowGuid   
+    WHERE
+        r.C_DtPosted >= '$(vCutoffDate)'
+    GROUP BY
+        Convert(date, r.C_DtPosted);
+        
+
+    Map_SQL_rows2:
+    MAPPING LOAD 
+        Year(MonthStart) & '/' & Num(Month(MonthStart)), 
+        SQL_Count 
+    RESIDENT 
+        Counting_SQL_rows2;
+
+END IF
+
+
+LET vStartYear = Year(Today());
+LET vEndYear = Year(Today()) -2;
+TRACE Years $(vStartYear) TO $(vEndYear) ;
+
+FOR vYear = $(vStartYear) TO $(vEndYear) STEP -1
+
+    LET vStartMonth = If(vYear = Year(Today()), Num(Month(Today())), 12);
+    TRACE Months $(vStartMonth) TO 1 ;
+
+    FOR vMonth = $(vStartMonth) TO 1 STEP -1
+
+
+        LET vFromDate = Date(MakeDate(vYear, vMonth, 1), 'YYYYMMDD');
+        LET vToDate = Date(AddMonths(MakeDate(vYear, vMonth, 1), 1), 'YYYYMMDD');
+        TRACE [Checking data >='$(vFromDate)' <'$(vToDate)'];
+        
+        LET vQVDFile = Right('0$(vMonth)', 2);
+        SET vQVDFile = [$(saveTo)/LedgersJournal_$(vYear)_$(vQVDFile).qvd];
+       
+        IF vForceLoadAll THEN
+        	LET vExecSQL = 1; 
+        ELSE 
+            IF Alt(FileTime(vQVDFile), 0) THEN
+                TRACE QVD File found $(vQVDFile);
+
+                LET vSQL_Count = ApplyMap('Map_SQL_rows2', '$(vYear)/$(vMonth)', 0);
+
+//                 Counting_QVD_rows:
+//                 LOAD rowGuid AS QVD_Count FROM [$(vQVDFile)] (qvd);
+
+//                 LET vQVD_Count = FieldValueCount('QVD_Count');
+                   LET vQVD_Count = QvdNoOfRecords('$(vQVDFile)');
+//                 DROP TABLE Counting_QVD_rows;
+
+                TRACE In SQL $(vSQL_Count) LedgerJournal entries, in QVD $(vQVD_Count) ...;
+                LET vExecSQL = If(vQVD_Count = vSQL_Count, 0, 1);
+
+            ELSE
+                TRACE QVD File NOT found $(vQVDFile);
+                LET vExecSQL = 1;
+
+            END IF
+        END IF
+        
+        TRACE Execute SQL? $(vExecSQL);
+        IF vExecSQL THEN 
+        
+            TRACE Creating $(vQVDFile);
+
+            LedgersJournal:
+            LOAD 
+                *, 
+                TextBetween(C_StrPaymentExtent, 'KFZ-Kennzeichen:', '$##') AS Kennzeichen
+			;
+            SELECT 
+                R._StationIdentity
+                ,R.rowGuid
+                // ,L.C_StrID  
+                // ,L.REF_Type  
+                // ,L.REF_Mode  
+                // ,L.REF_Site  
+                // ,L.REF_Ledger  
+                // ,L.C_StrBrandName  
+                // ,L.C_IntSequence  
+                // ,L.C_StrText  
+                // ,L.C_StrReference  
+                // ,L.C_BoolIsFinalize  
+                // ,L.C_NumExpense  
+                // ,L.C_NumReceipt  
+                // ,L.C_NumBalance  
+                // ,L.C_DtPosted  
+                // ,L.C_StrPayment  
+                ,L.C_StrPaymentExtent
+                ,L.REF_Receipt
+                // ,L.REF_ClosingDay  
+                // ,L.REF_ClosingShift  
+                // ,L.C_BoolIsAnalyzed  
+                // ,L.C_StrExportMarker  
+                // ,L.rowLogin,
+                // ,L.rowUpdate,
+                // ,L.rowGuid,
+                // ,L.rowVersion
+            FROM 
+                kstStationData.kst.T_Receipts AS R
+
+            INNER JOIN
+                kstStationData.kst.T_LedgersJournals AS L
+            ON
+                L._StationIdentity = R._StationIdentity
+                AND L.REF_Receipt = R.rowGuid  
+            WHERE 
+                R.C_DtPosted >= '$(vFromDate)' 
+                AND R.C_DtPosted < '$(vToDate)';
+                
+
+			STORE LedgersJournal INTO [$(vQVDFile)] (qvd);
+            DROP TABLE LedgersJournal;  
+            CONCATENATE (Reload) LOAD 
+            	'$(vQVDFile)' AS QVD,
+            	QvdNoOfRecords('$(vQVDFile)') AS Records 
+            AUTOGENERATE(1);
+            
+ 
+		END IF
+
+    NEXT vMonth;
+NEXT vYear;
+
+
+IF Alt(TableNumber ('Counting_SQL_rows2'), -1) > -1 THEN 
+	DROP TABLE Counting_SQL_rows2;
+END IF
+

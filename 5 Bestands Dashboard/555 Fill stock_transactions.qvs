@@ -1,0 +1,47 @@
+/*
+
+// stock_transaction_daily:
+// LOAD 
+// 	*
+// FROM
+// 	[lib://D-QVD-aaaa/Monalisa/2.Transform/stock_transaction_daily.qvd] (qvd);
+
+
+CALL GetMinMaxDate('stock.valid_from');
+
+TRACE Marking the first entry for each location/product  ...;
+
+LEFT JOIN (stock_transaction_daily)
+LOAD 
+	productLocationHash,
+	Min(stock.valid_from) AS [stock.valid_from],
+    1 AS isFirstEntry
+RESIDENT
+	stock_transaction_daily
+GROUP BY
+	productLocationHash;
+
+TRACE Filling the stockamounts with 0 before first entry ...;
+
+CONCATENATE (stock_transaction_daily)
+LOAD
+   %productId
+   ,%locationId
+   ,base_rate_unit
+   ,$(vCalMinDate) AS stock.valid_from
+   ,stock.valid_from - 1 AS stock.valid_to
+   ,0 as stockamount
+   ,1 as isFilled
+RESIDENT
+   stock_transaction_daily
+WHERE
+   isFirstEntry
+   AND [stock.valid_from] > $(vCalMinDate);
+   
+DROP FIELD productLocationHash;
+
+STORE stock_transaction_daily INTO [lib://D-QVD-aaaa/Monalisa/2.Transform/stock_transaction_daily.qvd] (qvd);
+
+
+
+*/

@@ -1,0 +1,21 @@
+// script found here: https://bi.stiglechner.at/dev-hub/extension-editor/#qext{qlik-script-lib}
+
+$(must_include=[lib://include-script-library/PreloadMappingTables.css]);
+// lädt alle *.css Mapping tabellen in den Speicher
+
+[ML_productgroup_from_KST]:
+MAPPING LOAD
+    [productgroup-mapping.KST_ProductGroupID],
+    [productgroup-mapping.Monalisa_Path]
+RESIDENT
+	[productgroup-mapping];
+    
+    
+[manufacturer_name_fixes]:
+MAPPING LOAD
+	manufacturer_names.from,
+    manufacturer_names.to
+RESIDENT
+    manufacturer_names;
+    
+    
