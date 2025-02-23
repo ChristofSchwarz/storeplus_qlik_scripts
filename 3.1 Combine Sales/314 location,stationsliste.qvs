@@ -4,12 +4,18 @@ Change-History
 */
 
 CALL GetQvdFieldNames('location', vQvdPath_Transf_KST);
+CALL GetQvdFieldNames('location', vQvdPath_Transf_Schnepf);
 CALL GetQvdFieldNames('location', vQvdPath_Transf_Monalisa);
 
 location:
 LOAD * FROM [$(vQvdPath_Transf_KST)/location.qvd] (qvd);
-CONCATENATE 
+
+CONCATENATE (location)
 LOAD * FROM [$(vQvdPath_Transf_Monalisa)/location.qvd] (qvd);
+
+CONCATENATE (location)
+LOAD * FROM [$(vQvdPath_Transf_Schnepf)/location.qvd] (qvd);
+
 LET vRowsBefore = NoOfRows('location');
 
 

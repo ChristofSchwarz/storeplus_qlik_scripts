@@ -2,6 +2,7 @@
 // was introduced and filled with just 100 to match to KST posbasket structure.
 
 CALL GetQvdFieldNames('posbasket+item', vQvdPath_Transf_KST);
+CALL GetQvdFieldNames('posbasket+item', vQvdPath_Transf_Schnepf);
 CALL GetQvdFieldNames('posbasket+item', vQvdPath_Transf_Monalisa);
 
 posbasket_filter:
@@ -10,7 +11,7 @@ LOAD * INLINE [
     100
 ];
 
-
+// -------------------- 1/3 KST posbasket_item --------------------
 posbasket_item: 
 LOAD 
     %basketId	
@@ -58,10 +59,48 @@ WHERE
 
 DROP TABLE posbasket_filter;
 
-//AND    NOT Match(%locationId, 'KST|1416848', 'KST|1415928', 'KST|1410608', 'KST|1420568');  // ignore locations which are not in storeplus network
-;
  
-CONCATENATE
+// -------------------- 2/3 Schnepf posbasket_item --------------------
+CONCATENATE (posbasket_item)
+LOAD
+   %basketId	
+    ,%calLink	
+    ,%locationId	
+    ,%productId	
+    ,posbasket.posted_date
+    ,posbasket.REF_Type
+    ,posbasket.stunde
+    ,Coalesce(is_EV, 0) AS is_EV
+    ,Coalesce(is_EVMA, 0) AS is_EVMA  // neu 17.08.2022
+    ,Coalesce(is_EVGF, 0) AS is_EVGF  // neu 17.08.2022
+    ,Coalesce(is_VERD, 0) AS is_VERD
+    ,Coalesce(is_DIEB, 0) AS is_DIEB
+    ,Coalesce(is_WERB, 0) AS is_WERB
+    ,is_Realverkauf  // neu 17.08.2022
+    ,posbasket.type	
+//     ,posbasket.uid	
+    ,Source	
+//     ,item.additional_text	
+    ,item.amount_gross	
+    ,item.amount_net	
+//     ,item.isFuel	
+    ,item.uniqueAutoId
+    ,item.itemid	
+    ,item.melzer_product_group
+//     ,item.price_gross	
+//     ,item.price_net	
+//     ,item.product_id	
+//     ,item.product_name	
+//     ,item.product_type	
+    ,item.quantity	
+//     ,item.uid	
+FROM 
+	[$(vQvdPath_Transf_Schnepf)/posbasket+item.qvd] (qvd);
+
+
+
+// -------------------- 3/3 Monalisa posbasket_item --------------------
+CONCATENATE (posbasket_item)
 LOAD
    %basketId	
     ,%calLink	

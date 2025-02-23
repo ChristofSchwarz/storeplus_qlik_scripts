@@ -1,6 +1,6 @@
 
 // Lade einige is_Spalten in eine 
-FOR EACH is_COLUMN in 'is_WERB', 'is_EV', 'is_EVMA', 'is_VERD', 'is_DIEB'
+FOR EACH is_COLUMN in 'is_WERB', 'is_EV', 'is_EVMA', 'is_EVGF', 'is_VERD', 'is_DIEB'
 
     [t_$(is_COLUMN)]:
     NOCONCATENATE LOAD
@@ -22,19 +22,20 @@ LET is_COLUMN = Null();
 
 // Füge dynamisch definierte Mappings für diverse Nicht-Umsatz-Typen hinzu
 
-[melzer_invoice+item2]:
+[schnepf_invoice+item2]:
 NOCONCATENATE LOAD
     *
-    ,$(vCondition_is_WERB) AS is_WERB_Schnepf
-    ,$(vCondition_is_EV)   AS is_EV_Schnepf
-    ,$(vCondition_is_EVMA) AS is_EVMA_Schnepf  // neu 07-Okt-2024
-    ,$(vCondition_is_VERD) AS is_VERD_Schnepf
-    ,$(vCondition_is_DIEB) AS is_DIEB_Schnepf
+    ,FAbs($(vCondition_is_WERB)) AS is_WERB
+    ,FAbs($(vCondition_is_EV)  ) AS is_EV
+    ,FAbs($(vCondition_is_EVMA)) AS is_EVMA  // neu 07-Okt-2024
+    ,FAbs($(vCondition_is_EVGF)) AS is_EVGF  // neu 23-Feb-2025
+    ,FAbs($(vCondition_is_VERD)) AS is_VERD
+    ,FAbs($(vCondition_is_DIEB)) AS is_DIEB
 RESIDENT
     [schnepf_invoice+item];
 
 DROP TABLE [schnepf_invoice+item];
-RENAME TABLE [melzer_invoice+item2] TO [schnepf_invoice+item];
+RENAME TABLE [schnepf_invoice+item2] TO [schnepf_invoice+item];
 
 STORE [schnepf_invoice+item] INTO [$(vQVDSaveToFolder)/schnepf_invoice+item.qvd] (qvd);
 CALL GetQvdFieldNames('schnepf_invoice+item', vQVDSaveToFolder);

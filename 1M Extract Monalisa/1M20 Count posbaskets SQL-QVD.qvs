@@ -48,41 +48,45 @@ LOAD * INLINE [
 ]
 WHERE NOT Prefix LIKE '//*';
 
-FOR v2 = 1 TO NoOfRows('QVD_Structure')
-    LET vPrefix = Peek('Prefix', v2 - 1, 'QVD_Structure');
-    LET vFieldToCount = Peek('FieldToCount', v2 - 1, 'QVD_Structure');
+IF Alt(NoOfRows('Counting_rows'), 0) THEN 
 
-    Counting_QVD_baskets:
-    LOAD * INLINE [year_month];
+    FOR v2 = 1 TO NoOfRows('QVD_Structure')
+        LET vPrefix = Peek('Prefix', v2 - 1, 'QVD_Structure');
+        LET vFieldToCount = Peek('FieldToCount', v2 - 1, 'QVD_Structure');
 
-	FOR v1 = 1 TO NoOfRows('Counting_rows')
+        Counting_QVD_baskets:
+        LOAD * INLINE [year_month];
 
-        // LET vSQLCount = Peek('sql_count', v1 - 1, 'Counting_rows');
-        LET vYearMonth = Peek('year_month', v1 - 1, 'Counting_rows');
-	    SET vQVDFile = [$(vQVDSaveToFolder)/$(vPrefix)_$(vYearMonth).qvd];
+        FOR v1 = 1 TO NoOfRows('Counting_rows')
 
-        IF Alt(FileTime(vQVDFile), 0) THEN
+            // LET vSQLCount = Peek('sql_count', v1 - 1, 'Counting_rows');
+            LET vYearMonth = Peek('year_month', v1 - 1, 'Counting_rows');
+            SET vQVDFile = [$(vQVDSaveToFolder)/$(vPrefix)_$(vYearMonth).qvd];
 
-            [~Counting]:
-            LOAD [$(vFieldToCount)] FROM [$(vQVDFile)] (qvd);
-            LET vQVD_Count = FieldValueCount(vFieldToCount);
-            TRACE Counted $(vQVD_Count) baskets in $(vQVDFile);
-            DROP TABLE [~Counting];
-            CONCATENATE (Counting_QVD_baskets)
-            LOAD 
-                '$(vYearMonth)' AS year_month
-                ,$(vQVD_Count) AS [qvd_count_$(vPrefix)]
-            AUTOGENERATE(1);
-        ELSE
-	        TRACE No file $(vQVDFile);
-        END IF
-    NEXT v1
-    
-    LEFT JOIN (Counting_rows)
-    LOAD * RESIDENT Counting_QVD_baskets;
-    DROP TABLE Counting_QVD_baskets;
-    
-NEXT v2
+            IF Alt(FileTime(vQVDFile), 0) THEN
+
+                [~Counting]:
+                LOAD [$(vFieldToCount)] FROM [$(vQVDFile)] (qvd);
+                LET vQVD_Count = FieldValueCount(vFieldToCount);
+                TRACE Counted $(vQVD_Count) baskets in $(vQVDFile);
+                DROP TABLE [~Counting];
+                CONCATENATE (Counting_QVD_baskets)
+                LOAD 
+                    '$(vYearMonth)' AS year_month
+                    ,$(vQVD_Count) AS [qvd_count_$(vPrefix)]
+                AUTOGENERATE(1);
+            ELSE
+                TRACE No file $(vQVDFile);
+            END IF
+        NEXT v1
+        
+        LEFT JOIN (Counting_rows)
+        LOAD * RESIDENT Counting_QVD_baskets;
+        DROP TABLE Counting_QVD_baskets;
+        
+    NEXT v2
+
+END IF
 
 DROP TABLE QVD_Structure;
 

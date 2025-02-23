@@ -9,6 +9,7 @@ Die combined productgroup Tabelle wird aus zwei Quellen zusammengeführt:
    vorangestellt als Pseudo-Produktgruppe aufgefüllt
 */
 
+// -------------------- 1/3 Monalisa productgroup --------------------
 productgroup:
 LOAD DISTINCT
     *
@@ -19,7 +20,7 @@ LOAD DISTINCT
             'original ' & subfield(%prodGrpId, '|', 1) &' Kategorie'
         //    ) 
         ) AS productgroup.info
-    ,subfield(%prodGrpId, '|', 1) AS productgroup.sourceKey
+    ,'ML' AS productgroup.sourceKey
 FROM 
 	[$(vQvdPath_Transf_Monalisa)/productgroup.qvd] (qvd)
 // 19.10.2022 WHERE auskommentiert, damit Produktgruppen, die früher einmal valid waren und nicht mehr sind, dennoch
@@ -30,6 +31,24 @@ FROM
 
 //DROP FIELD productgroup.valid FROM productgroup;
 
+// -------------------- 2/3 KST productgroup --------------------
+CONCATENATE (productgroup)
+LOAD 
+    %prodGrpId
+    ,productgroup.uid
+    ,productgroup.name
+    ,productgroup.name1
+    ,productgroup.name2
+    ,productgroup.name3
+    ,productgroup.Path
+    ,productgroup.hier_level
+    ,productgroup.valid
+    ,productgroup.isSchnepfXlsMapping
+    ,'SK' AS productgroup.sourceKey
+FROM 
+	[$(vQvdPath_Transf_Schnepf)/productgroup.qvd] (qvd);
+
+// -------------------- 3/3 KST productgroup --------------------
 CONCATENATE (productgroup)
 LOAD DISTINCT
     *
