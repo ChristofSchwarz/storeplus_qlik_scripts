@@ -17,11 +17,9 @@ if (-not (Test-Path -Path $backups -PathType Container)) {
 }
 Write-Host "Making a backup .zip file ..."
 Compress-Archive $stable "$parent\backups\stable $((Get-Date).ToString('yyyy-MM-dd HHmmss')).zip"
-Rename-Item "$stable\README.md" "~README.md" 
 Remove-Item -Path "$stable\*" -Recurse -Force
 Write-Host "Cleaning \stable folder"
 Write-Host "Copying folder \preview to \stable"
 Copy-Item -Path "$preview\*" -Destination $stable -Recurse -Force
-Rename-Item "$stable\~README.md" "README.md" 
 Write-Host "All items copied from \preview to \stable"
 pause
