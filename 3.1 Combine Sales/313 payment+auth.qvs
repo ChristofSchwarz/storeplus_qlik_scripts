@@ -1,5 +1,9 @@
+
 payment_auth: 
 LOAD * FROM [$(vQvdPath_Transf_Monalisa)/payment+auth.qvd] (qvd);
+
 STORE payment_auth INTO [$(vQvdPath_Store)/payment+auth.qvd] (qvd);
+
 DROP TABLE payment_auth;
+
 CALL GetQvdFieldNames('payment+auth', vQvdPath_Store);

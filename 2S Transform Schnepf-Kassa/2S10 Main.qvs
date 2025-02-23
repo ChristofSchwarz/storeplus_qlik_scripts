@@ -57,7 +57,8 @@ NEXT vYear
 TRACE vYears: $(vYears);
 
 $(must_include=[lib://include-script-library/get-qvd-fields.css]);
-$(must_include=[lib://include-script-library/PreloadMappingTables.css]);
+
+// $(must_include=[lib://include-script-library/PreloadMappingTables.css]);
 // lädt alle *.css Mapping tabellen in den Speicher
 
 // Nach dem Motto "dont repeat yourself" gibt es bestimmte Feldformeln untenstehend, die

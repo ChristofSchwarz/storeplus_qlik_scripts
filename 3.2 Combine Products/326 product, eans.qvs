@@ -5,6 +5,7 @@ change log:
 
 CALL GetQvdFieldNames('product', vQvdPath_Transf_KST);
 CALL GetQvdFieldNames('product', vQvdPath_Transf_Monalisa);
+CALL GetQvdFieldNames('product', vQvdPath_Transf_Schnepf);
 
 // The highest mapping priority (*_1 ) is the one made using the Product ID. 
 // If there is a mapping hit, fill the fields product.name_1, product.prodGrpId_1, product.brand_1
@@ -50,8 +51,24 @@ LOAD
     ,$(vCommonFields)  
 FROM
 	[$(vQvdPath_Transf_Monalisa)/product.qvd] (qvd);
-    
-    
+
+CONCATENATE ([~product]) 
+LOAD 
+    %productId
+    ,%prodMappingId
+    ,%prodGrpId                                     AS product.prodGrpId_orig
+    ,product.source
+//    ,product.uid
+    ,product.name                                   AS product.name_orig
+    ,product.isFuel
+    ,Null()                                         AS product_brand
+	,Null()                                         AS product.manufacturer_orig
+    ,1                                             AS product.isUsed   
+    ,$(vCommonFields)  
+FROM
+	[$(vQvdPath_Transf_Schnepf)/product.qvd] (qvd);
+        
+
 CONCATENATE ([~product]) 
 LOAD 
 

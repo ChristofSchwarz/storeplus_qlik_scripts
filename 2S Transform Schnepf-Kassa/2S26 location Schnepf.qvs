@@ -56,9 +56,11 @@ RENAME TABLE location2 TO location;
 DROP FIELDS 
     location.name.mapped, location.name.default, location.import.mapped
     FROM location;
+
 DROP FIELDS 
     [Stations-Nummer.mapped], [Stations-Nummer.default] 
     FROM location;
+
 RENAME FIELD [location.name2] TO location.name;
 RENAME FIELD [Stations-Nummer2] TO [Stations-Nummer];
 

@@ -1,6 +1,5 @@
 TRACE dropping (almost) all tables ...;
 
-
 FOR v = NoOfTables()-1 TO 0 STEP -1
 
 	LET vTable = TableName(v);

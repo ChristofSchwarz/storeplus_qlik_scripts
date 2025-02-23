@@ -16,6 +16,10 @@ COLLECTIVE_INVOICE (S) Sammelrechnung
 
 posbasket_item:
 LOAD
+    *
+    ,FAbs(RangeSum(is_WERB, is_EVMA, is_EVGF, is_EV, is_VERD, is_DIEB) = 0) AS is_Realverkauf 
+;
+LOAD
     'Schnepf'                                AS Source
     //,'SK|' & invoice.service_station         AS %locationId
     ,'SK|' & invoice.site_number             AS %locationId
@@ -25,13 +29,8 @@ LOAD
     ,100                                     AS posbasket.REF_Type  // Kompatibilität mit KST daten, die REF_Type haben
 
     ,invoice.uid                             AS posbasket.uid     
-    ,Timestamp(Floor(invoice.posted_date, 1/24/3600), 'YYYY-MM-DD hh:mm:ss') AS 	posbasket.posted_date  // auf Sekunde genau
-    // ,invoice.creation_date                AS posbasket.creation_date       
-    // ,invoice.creation_user                AS posbasket.creation_user      
-    // ,invoice.modification_date            AS posbasket.modification_date          
-    // ,invoice.modification_user            AS posbasket.modification_user         
+    ,Timestamp(Floor(invoice.posted_date, 1/24/3600), 'YYYY-MM-DD hh:mm:ss') AS 	posbasket.posted_date  // auf Sekunde genau       
     // ,invoice.valid                        AS posbasket.valid
-    // ,invoice.s2g_version                  AS posbasket.s2g_version        
     ,invoice.invoice_number                  AS posbasket.id        
     // ,Coalesce(invoice.invoice_type, '')      AS posbasket.type         // Christof auskommentiert 06.08.2024
     // type feld wird aus Payment_Type und Invoice_type befüllt
@@ -50,15 +49,10 @@ LOAD
     // ,invoice.customer_country_code        AS posbasket.customer_country_code                 
     // ,invoice.customer_location_post_code  AS posbasket.customer_location_post_code   
 
-
     ,RowNo()                                 AS item.uniqueAutoId
     ,0                                       AS item.isFuel
-    //,'SK|' & Lower(Left(KeepChar(Repeat(Hash256(item.product_description)&'-',10)   
-    //,'0123456789ABCDEFGHIJKLMOPQRSTUVWXYZ-'), 36))             AS %productId
-    
     ,'SK|' &  $(vMelzerProductID_Syntax)     AS %productId
-    // ,item.uid                             AS item.uid         
-    // ,item.melzer_invoice_uid              AS item.melzer_invoice_uid           
+    // ,item.uid                             AS item.uid                 
     ,item.product_number                      AS item.product_id       
     ,item.product_description                 AS item.product_name            
     ,item.melzer_product_group                AS item.melzer_product_group             
@@ -71,12 +65,15 @@ LOAD
     // ,item.unit_price                          AS item.unit_price  
     ,item.gross_price                         AS item.amount_gross    
     ,'service ' & item.service                AS item.additional_text        
+    ,1                                        AS item.itemid
+// neu
 
-    ,Fabs(is_WERB_Schnepf)                    AS is_WERB
-    ,Fabs(is_EVMA_Schnepf)                    AS is_EVMA
-    ,Fabs(is_EV_Schnepf)                      AS is_EV
-    ,Fabs(is_VERD_Schnepf)                    AS is_VERD
-    ,Fabs(is_DIEB_Schnepf)                    AS is_DIEB
+    ,is_WERB
+    ,is_EVMA
+    ,is_EVGF
+    ,is_EV
+    ,is_VERD
+    ,is_DIEB
 FROM 
     [$(vQVDLoadFolder)/schnepf_invoice+item.qvd] (qvd)
 WHERE 
@@ -86,7 +83,8 @@ WHERE
         NOT WildMatch(Coalesce(item.melzer_product_group, ''), '*_70', '')  // updated line 18-Feb-2025
         OR (item.net_price <> 0)  // unnötige Zeilen ohne Preis aus Gruppe 70 ignorieren
     )
-    AND Exists(%locationId, 'SK|' & invoice.site_number) // Zeilen einer site, die schon bei den locations ausgeklammert wurde, wollen wir nicht importieren
+    AND Exists(%locationId, 'SK|' & invoice.site_number) // Zeilen einer site, die schon bei den locations ausgeklammert wurde,
+        // wollen wir nicht importieren
 ;
         
 
