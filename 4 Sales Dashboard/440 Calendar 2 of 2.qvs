@@ -12,12 +12,12 @@ FOR vVorjahr = -1 TO -3 STEP -1
     ;
 NEXT vVorjahr
 
-    CONCATENATE (calendar)
-    LOAD
-        %calLink -7 AS %calLink,
-        'VW' AS Vorjahr,
-        $(vKalenderFelder)
-    FROM [$(vQvdPath_Combined)/calendar.qvd] (qvd)
-    WHERE 
-        Exists (%calLink, %calLink -7)
-    ;
+CONCATENATE (calendar)
+LOAD
+    %calLink -7 AS %calLink,
+    'VW' AS Vorjahr,
+    $(vKalenderFelder)
+FROM [$(vQvdPath_Combined)/calendar.qvd] (qvd)
+WHERE 
+    Exists (%calLink, %calLink -7)
+;

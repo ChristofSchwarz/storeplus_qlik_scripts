@@ -78,11 +78,12 @@ FROM
     [$(vQVDLoadFolder)/schnepf_invoice+item.qvd] (qvd)
 WHERE 
     invoice.valid = 'True'
-    AND (
-        // NOT Match(Coalesce(item.melzer_product_group, ''), '70', '') 
-        NOT WildMatch(Coalesce(item.melzer_product_group, ''), '*_70', '')  // updated line 18-Feb-2025
-        OR (item.net_price <> 0)  // unnötige Zeilen ohne Preis aus Gruppe 70 ignorieren
-    )
+    AND item.net_price <> 0
+    // (
+    //     // NOT Match(Coalesce(item.melzer_product_group, ''), '70', '') 
+    //     NOT WildMatch(Coalesce(item.melzer_product_group, ''), '*70', '')  // updated line 18-Feb-2025
+    //     OR (item.net_price <> 0)  // unnötige Zeilen ohne Preis aus Gruppe 70 ignorieren
+    // )
     AND Exists(%locationId, 'SK|' & invoice.site_number) // Zeilen einer site, die schon bei den locations ausgeklammert wurde,
         // wollen wir nicht importieren
 ;

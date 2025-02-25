@@ -307,6 +307,8 @@ SET vColor_Balken1  = If(IsNull(Below(RowNo())), '#87205D', '#006580');
 // before including the below lines of script, for example
 // SET vSyncFields = [ 'order_date*' , 'employee_id', 'shipping_date*' ];
 SET vDontSyncFields = [ 'productgroup.name1' , 'Vorjahr' ];
+SET vDontSyncFields = [ 'Jahr', 'Monat', 'Station', 'Vorjahr' ];
+
 
 // WHEN Len(Trim('$(vSyncFields)'))=0 SET vSyncFields = ['*'];
 SET vFieldsWithSelections = [=Replace('ValueList('&CHR(39)&GetCurrentSelections('*/,'&CHR(39),CHR(39)&'/*','',1,'$')&'*/)','ValueList(''*/)','Null()')];
